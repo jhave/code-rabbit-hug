@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>code-rabbit hugs</title>
+<style>
+  html,body{margin:0;height:100%;background:#050508;overflow:hidden;overscroll-behavior:none}
+  canvas{position:fixed;inset:0;width:100vw;height:100vh;display:block;touch-action:none}
+  #ov{cursor:crosshair}
+  #err{position:fixed;inset:0;display:none;place-items:center;color:#ccd;font:16px/1.5 Menlo,monospace;text-align:center;padding:2em}
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<canvas id="ov"></canvas>
+<div id="err"></div>
+<audio id="au" src="audio.m4a" preload="auto"></audio>
+<script src="data.js"></script>
+<script src="engine.js"></script>
+<script src="scenes.js"></script>
+</body>
+</html>
