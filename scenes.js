@@ -20,10 +20,12 @@ function words(c, i, cx, cy, o = {}) {
   if (k <= 0) return L;
   for (const w of L) {
     const age = o.all ? 9 : t - w.a; if (age < 0) continue;
-    c.globalAlpha = clamp(age / .16) * k; c.fillStyle = typeof o.col === 'function' ? o.col(w) : (o.col || COL.paper);
-    const rise = o.all ? 0 : (1 - clamp(age / .22)) ** 2 * size * .3;
+    const live = !o.all && t < w.b, pop = o.all ? 0 : Math.exp(-age * 9);
+    c.globalAlpha = clamp(age / .07) * k * (live || o.all ? 1 : .86) * (ink ? 1 + pop * 3 : 1); c.fillStyle = typeof o.col === 'function' ? o.col(w) : (o.col || COL.paper);
+    const rise = pop * size * .22;
     if (o.wf) { c.save(); c.translate(cx + w.x, cy + w.y + rise); o.wf(w, c, age, ink, cy + w.y); c.restore(); }
-    else c.fillText(w.w, cx + w.x, cy + w.y + rise);
+    else if (pop > .02) { const sc = 1 + pop * .12; c.save(); c.translate(cx + w.x + w.wd / 2, cy + w.y + rise); c.scale(sc, sc); c.fillText(w.w, -w.wd / 2, 0); c.restore(); }
+    else c.fillText(w.w, cx + w.x, cy + w.y);
   }
   c.globalAlpha = 1; return L;
 }
@@ -59,7 +61,7 @@ function spiral(k, amt) { // "all moments happen simultaneously"
   const { W, H, u, t } = E, cx = W / 2, cy = H / 2, R = Math.hypot(W, H) * .5, now = cueAt(t);
   font(O, 2.1 * u, F.serif, 'italic'); O.textAlign = 'center';
   for (let i = 0; i < cues.length; i++) {
-    const ph = (hash(i * 5.1) + t * .04) % 1, r = R * Math.pow(1 - ph, 1.5), ang = i * 2.39996 + t * (.2 + 1.1 * ph * ph), s = .35 + (1 - ph) * .95;
+    const ph = (hash(i * 5.1) + t * .04) % 1, r = R * Math.pow(1 - ph, 1.5), ang = i * 2.39996 + t * (.2 + 1.1 * ph * ph) + A.mid * .12, s = (.35 + (1 - ph) * .95) * (1 + E.kick * .05);
     O.save(); O.translate(cx + Math.cos(ang) * r, cy + Math.sin(ang) * r * .92); O.rotate(ang + PI / 2); O.scale(s, s);
     O.globalAlpha = amt * k * sm(0, .12, ph) * (1 - sm(.8, 1, ph)) * (i === now ? .9 : .42); O.fillStyle = i === now ? COL.mint : COL.paper;
     O.fillText(cues[i].text, 0, 0); O.restore();
@@ -69,7 +71,7 @@ function spiral(k, amt) { // "all moments happen simultaneously"
 function stripes(k, vis) {
   const { W, H, t } = E, n = 7, bh = H / n, off = (t * H * .035) % (2 * bh), ys = [];
   for (let j = -2; j < n + 2; j += 2) ys.push(j * bh + off);
-  I.fillStyle = rgba(190, 215, 255, (.035 + .07 * E.pulse) * k); for (const y of ys) I.fillRect(W * .08, y, W * .84, bh);
+  I.fillStyle = rgba(190, 215, 255, (.03 + .05 * E.pulse + .09 * E.snap) * k); for (const y of ys) I.fillRect(W * .08, y, W * .84, bh);
   if (vis > 0) { O.fillStyle = rgba(236, 238, 248, vis * k); for (const y of ys) O.fillRect(W * .08, y, W * .84, bh); }
   return { ys, bh };
 }
@@ -96,7 +98,7 @@ function beads(k, amt) { // tamagotchi rosary
   for (let j = 0; j < N; j++) {
     const g = j / N * TAU - PI / 2, x = W / 2 + Math.cos(g) * ex, y = H / 2 + Math.sin(g) * ey, on = j === act, r = (on ? 3.1 + E.pulse : 2.1) * u;
     O.globalAlpha = k * amt * (on ? 1 : .42); O.fillStyle = '#b9cf9a'; O.beginPath(); O.arc(x, y, r, 0, TAU); O.fill();
-    const s = SPR[(j + (on ? Math.floor(E.beat * 2) : 0)) % 4], px = r * .26; O.fillStyle = '#1d2a18';
+    const s = SPR[(j + (on ? Math.floor(E.beat * 2) : E.snap > .6 && hash(j + E.beatN) > .6 ? 1 : 0)) % 4], px = r * .26; O.fillStyle = '#1d2a18';
     for (let q = 0; q < 25; q++) if (s[q] === '1') O.fillRect(x + ((q % 5) - 2.5) * px, y + (Math.floor(q / 5) - 2.5) * px, px * .92, px * .92);
     if (on) { I.globalAlpha = .5 * k * amt * (1 - E.beat); I.fillStyle = PAL[j % 5]; I.beginPath(); I.arc(x, y, r * 1.5, 0, TAU); I.fill(); I.globalAlpha = 1; }
   }
@@ -128,7 +130,7 @@ function rabbitsStep() {
     else { const g = Math.atan2(r.y - H / 2, r.x - W / 2); tx = W / 2 + Math.cos(g) * (W + H); ty = H / 2 + Math.sin(g) * (W + H); }
     const kS = act ? 7 : .9; r.vx += ((tx - r.x) * kS - r.vx * 3.4) * dt; r.vy += ((ty - r.y) * kS - r.vy * 3.4) * dt; r.x += r.vx * dt; r.y += r.vy * dt;
     r.gone = !act && (r.x < -9 * u || r.x > W + 9 * u || r.y < -9 * u || r.y > H + 9 * u);
-    const hop = -Math.abs(Math.sin((E.beat + hash(r.n) * .5) * PI)) * 1.7 * u * (.25 + A.lo);
+    const hop = -(Math.abs(Math.sin((E.beat + hash(r.n) * .5) * PI)) * .7 * (.25 + A.lo) + E.kick * (.6 + hash(r.n * 2.2))) * 1.5 * u;
     bunny(O, r.x, r.y + hop, s, r.n);
     I.globalAlpha = .34; I.fillStyle = PAL[r.n % 5]; I.beginPath(); I.arc(r.x, r.y + hop, s * .8, 0, TAU); I.fill(); I.globalAlpha = 1;
   });
@@ -179,7 +181,7 @@ add(18.6, 38.85, t => ({ irid: lerp(.4, .95, sm(23, 38, t)), turb: 1.25, swirl: 
   para(1, W / 2, H * .46, { size, fam: F.disp, style: 'italic', k: k * fade, ink: .05 + .3 * (1 - fade) * sm(22.4, 23, t) * (1 - sm(23.8, 24.6, t)), maxW: W });
   if (t > 22.6) { // one asterisk per beat once the drums arrive
     const n = E.beatN, x = (.12 + .76 * hash(n * 1.9)) * W, y = (.14 + .72 * hash(n * 4.3)) * H, r = (4 + 9 * hash(n * 7.1)) * u * (.5 + A.lo);
-    aster(O, x, y, r * (1 + E.beat * .4), n * .7, PAL[((n % 5) + 5) % 5], .35 * u, k * Math.exp(-E.beat * 3.2) * .9);
+    aster(O, x, y, r * (1 + E.beat * .4), n * .7 + E.snap * .4, PAL[((n % 5) + 5) % 5], (.35 + .5 * E.kick) * u, k * Math.exp(-E.beat * 3.2) * .9);
     aster(I, x, y, r, n * .7, PAL[((n % 5) + 5) % 5], .9 * u, k * .55 * (1 - E.beat));
   }
   const ta = sm(27, 29, t) * (1 - sm(35.5, 37.8, t));
@@ -300,7 +302,7 @@ function chorus(base, k, big) {
   const longest = lines.reduce((a, b) => a.length > b.length ? a : b), gut = 5;
   const size = Math.min(3.5 * u, fit('0'.repeat(longest.length + gut), E.fw * .8, 99, F.mono)), lh = size * 1.85;
   font(O, size, F.mono); const cw = O.measureText('M').width, bw = (longest.length + gut) * cw, x0 = (W - bw) / 2, xt = x0 + gut * cw, y0 = H / 2 - 3.5 * lh;
-  const fk = hash(Math.floor(T * 24)) > .94 ? .55 : 1;
+  const fk = 1 - .38 * E.snap * (hash(Math.floor(T * 30)) > .4 ? 1 : .3);
   O.globalAlpha = k * .55; O.fillStyle = '#07080e'; rr(O, x0 - 3 * u, y0 - lh * 1.1, bw + 6 * u, lh * 9.2, 1.5 * u); O.fill(); O.globalAlpha = 1;
   let wrapQ = 0;
   for (let n = 0; n < 8; n++) {
@@ -477,7 +479,7 @@ add(164.75, 172.9, { shear: 1.7, turb: .5, irid: .5, decay: .976 }, ({ k }) => {
 // ============================================================ 2:52 bridge: two voices, a branch that never merges
 function glitchText(i, cx, cy, size, k) {
   const { T, u } = E, o = { size, fam: F.mono, style: 'bold', upper: true, maxW: Math.min(E.W * .84, E.fw * .74), lh: 1.5 };
-  const L = words(I, i, cx, cy, { ...o, col: COL.mint, k }), n = 6, bh = (L.h + size) / n, tk = Math.floor(T * 11);
+  const L = words(I, i, cx, cy, { ...o, col: COL.mint, k }), n = 6, bh = (L.h + size) / n, tk = Math.floor(T * 5) + Math.floor(E.t / (BEAT / 4)) * 7;
   for (let b = 0; b < n; b++) {
     const dx = hash(b * 7 + tk) > .68 ? (hash(b + tk * 3.1) - .5) * size * 1.3 * (.35 + A.hi + A.mid) : 0;
     O.save(); O.beginPath(); O.rect(0, cy - (L.h + size) / 2 + b * bh, E.W, bh + .5); O.clip(); O.globalCompositeOperation = 'screen';

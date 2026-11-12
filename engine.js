@@ -20,13 +20,15 @@ const TAU = Math.PI * 2;
 
 // ---------- baked audio features
 const dec = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
-const ENV = { lo: dec(S.lo), mid: dec(S.mid), hi: dec(S.hi), rms: dec(S.rms), flux: dec(S.flux) };
+const ENV = { lo: dec(S.lo), mid: dec(S.mid), hi: dec(S.hi), rms: dec(S.rms), flux: dec(S.flux), bright: dec(S.bright) };
 function env(name, t) {
   const a = ENV[name], i = (t - S.t0) * S.fps, k = Math.floor(i);
   if (k < 0 || k >= a.length - 1) return 0; const f = i - k;
   return (a[k] * (1 - f) + a[k + 1] * f) / 255;
 }
 const BEAT = 60 / S.bpm;
+// seconds since the most recent event in a sorted list (kicks, snaps)
+function since(list, t) { let a = 0, b = list.length - 1, k = -1; while (a <= b) { const m = (a + b) >> 1; if (list[m] <= t) { k = m; a = m + 1; } else b = m - 1; } return k < 0 ? 9 : t - list[k]; }
 
 // ---------- shaders
 const VS = `#version 300 es
@@ -40,7 +42,7 @@ vec2 curl(vec2 p){ float e=.02; return vec2(vn(p+vec2(0,e))-vn(p-vec2(0,e)), vn(
 const SIM = `#version 300 es
 precision highp float;
 uniform sampler2D uPrev, uInk; uniform vec2 uRes; uniform float uT, uK;
-uniform float uSwirl,uTurb,uShear,uDrain,uDecay,uInject,uFreeze,uGrav,uGlitch,uZoom;
+uniform float uSwirl,uTurb,uShear,uDrain,uDecay,uInject,uFreeze,uGrav,uGlitch,uZoom,uFine;
 uniform vec2 uPtr, uPtrV;
 in vec2 v; out vec4 o;
 ${NOISE}
@@ -48,6 +50,7 @@ void main(){
   float asp=uRes.x/uRes.y; vec2 p=(v-.5)*vec2(asp,1.);
   vec2 f=vec2(0.);
   f += (curl(p*1.6+vec2(0.,uT*.04)) + .5*curl(p*4.1-vec2(uT*.07,0.)))*.0016*uTurb;
+  f += curl(p*11.+vec2(uT*.3,-uT*.2))*.0007*uFine;
   float r=length(p);
   f += vec2(-p.y,p.x)*uSwirl*.011/(.18+r);
   f -= p*uDrain*.007/(.25+r);
@@ -81,7 +84,7 @@ void main(){
 const SHOW = `#version 300 es
 precision highp float;
 uniform sampler2D uTex; uniform vec2 uRes; uniform float uT;
-uniform float uIrid,uFluoro,uBlush,uGlitch,uDim,uPulse;
+uniform float uIrid,uFluoro,uBlush,uGlitch,uDim,uPulse,uSnap,uHat,uBright;
 in vec2 v; out vec4 o;
 ${NOISE}
 float L(vec3 c){ return dot(c,vec3(.3,.59,.11)); }
@@ -93,14 +96,14 @@ void main(){
   float asp=uRes.x/uRes.y; vec2 uv=v; vec2 p=(v-.5)*vec2(asp,1.);
   float row=floor(uv.y*44.); float off=0.;
   if(uGlitch>.01 && h1(vec2(row,floor(uT*13.)))>1.-uGlitch*.16) off=(h1(vec2(row,floor(uT*13.)+5.))-.5)*.09*uGlitch;
-  float sp=.0035*uGlitch;
+  float sp=.0035*uGlitch+.0022*uSnap;
   vec4 s=texture(uTex,uv+vec2(off,0.));
   vec3 c=vec3(texture(uTex,uv+vec2(off+sp,0.)).r, s.g, texture(uTex,uv+vec2(off-sp,0.)).b);
   vec2 e=vec2(2.5)/uRes;
   float l=L(c);
   float gx=L(texture(uTex,uv+vec2(e.x,0.)).rgb)-L(texture(uTex,uv-vec2(e.x,0.)).rgb);
   float gy=L(texture(uTex,uv+vec2(0.,e.y)).rgb)-L(texture(uTex,uv-vec2(0.,e.y)).rgb);
-  vec3 film=.5+.5*cos(6.2832*(l*1.3+(gx+gy)*3.+vn(p*2.2+uT*.06)*1.2+uT*.02+vec3(0.,.33,.67)));
+  vec3 film=.5+.5*cos(6.2832*(l*1.3+(gx+gy)*3.+vn(p*2.2+uT*.06)*1.2+uT*.02+uBright*.35+vec3(0.,.33,.67)));
   c=mix(c, c*film*1.9+film*l*.25, uIrid);
   c+=vec3(.9,.95,1.)*length(vec2(gx,gy))*.6*uIrid;
   vec3 bg=mix(vec3(.018,.018,.032),vec3(.045,.03,.07),v.y+.2*vn(p*1.5+uT*.03));
@@ -114,8 +117,10 @@ void main(){
     vec3 ic=vec3(.55,.82,1.)*(.18+.5*facet)+vec3(1.)*(1.-edge)*.5+c*.55;
     c=mix(c, ic, smoothstep(0.,.5,ice)*.82); }
   c+=uPulse*vec3(.03,.025,.045);
+  c+=uSnap*vec3(.05,.06,.07)*smoothstep(.5,.0,abs(fract(v.y*3.-uT*.7)-.5))*(.4+l);
+  c*=1.+uSnap*.12;
   c*=1.-.55*dot(p,p)*.9;
-  c+=(h1(v*uRes+fract(uT)*17.)-.5)*.035;
+  c+=(h1(v*uRes+fract(uT)*17.)-.5)*(.03+.07*uHat);
   o=vec4(pow(max(c,0.),vec3(.92)),1.);
 }`;
 
@@ -160,17 +165,30 @@ const DEF = { swirl: 0, turb: 1, shear: 0, drain: 0, decay: .972, inject: 1, iri
 const P = { ...DEF };
 
 // ---------- lyric timing helpers
-const wcache = [];
+// Suno gives line starts only. Words inside a line are estimated: syllable counts, pauses after punctuation,
+// the sung part ending before the line slot does, and onsets snapped to the 16th-note grid.
+// window.SONG_WORDS (from words.js, made with ?tap or from a vocal stem) overrides the estimate per cue.
+const wcache = [], LEAD = .05, FILL = .86, SIXT = BEAT / 4;
+const syl = w => { let n = 0; for (const part of w.toLowerCase().replace(/[^a-z-]/g, '').split('-')) { if (!part) continue; const m = part.replace(/e$/, '').match(/[aeiouy]+/g); n += Math.max(1, m ? m.length : 1); } return Math.max(1, n); };
 function wordsOf(i) {
   if (wcache[i]) return wcache[i];
-  const c = cues[i], ws = c.text.split(' '), dur = Math.min(c.b - c.a, ws.length * .62 + .5);
-  const wt = ws.map(w => w.replace(/[^\w]/g, '').length + 2), tot = wt.reduce((a, b) => a + b, 0);
-  let acc = 0; const out = ws.map((w, k) => { const a = c.a + dur * acc / tot; acc += wt[k]; return { w, a, b: c.a + dur * acc / tot, i: k }; });
-  out.end = c.a + dur; return wcache[i] = out;
+  const c = cues[i], ws = c.text.split(' '), given = window.SONG_WORDS && window.SONG_WORDS[i];
+  let out;
+  if (given && given.length === ws.length) {
+    out = ws.map((w, k) => ({ w, a: given[k] - LEAD, b: (k + 1 < ws.length ? given[k + 1] : given[k] + .45) - LEAD, i: k }));
+  } else {
+    const wt = ws.map(w => syl(w) + (/[,:;?!.—”]$/.test(w) ? .7 : 0) + .25), tot = wt.reduce((a, b) => a + b, 0);
+    const sung = i >= 2 && i <= 48 && !(i >= 38 && i <= 40), span = (cues[i + 1] ? Math.min(c.b, cues[i + 1].a) : c.b) - c.a;
+    const dur = Math.min(span * FILL, tot * .29 + .3);
+    let acc = 0, prev = -1; out = ws.map((w, k) => { let a = c.a + dur * acc / tot; acc += wt[k];
+      if (sung && k) a = Math.max(prev + SIXT, Math.round((a - S.beat0) / SIXT) * SIXT + S.beat0); prev = a; return { w, a: a - LEAD, i: k }; });
+    out.forEach((w, k) => { w.b = k + 1 < out.length ? out[k + 1].a : Math.max(w.a + .2, c.a + dur - LEAD); });
+  }
+  out.end = out[out.length - 1].b; return wcache[i] = out;
 }
 const wordT = (i, re) => { const w = wordsOf(i).find(w => re.test(w.w)); return w ? w.a : cues[i].a; };
 const cprog = (i, t = E.t) => clamp((t - cues[i].a) / (wordsOf(i).end - cues[i].a));
-function charsShown(i, t = E.t) { let n = 0; for (const w of wordsOf(i)) { if (t >= w.b) n += w.w.length + 1; else if (t > w.a) { n += Math.ceil(w.w.length * (t - w.a) / (w.b - w.a)); break; } else break; } return n; }
+function charsShown(i, t = E.t) { let n = 0; for (const w of wordsOf(i)) { if (t >= w.b) n += w.w.length + 1; else if (t > w.a) { n += Math.min(w.w.length, Math.ceil(w.w.length * (t - w.a) / ((w.b - w.a) * .55))); if (t < w.a + (w.b - w.a) * .55) break; n++; break; } else break; } return n; }
 function cueAt(t) { let k = -1; for (let i = 0; i < cues.length; i++) if (t >= cues[i].a) k = i; return k; }
 
 // word-wrap the current ctx font; returns items positioned around (0,0), textBaseline middle, textAlign left
@@ -199,7 +217,7 @@ addEventListener('pointerdown', e => { ptr.tx = e.clientX; ptr.ty = e.clientY; p
 addEventListener('pointerup', () => ptr.down = false);
 
 // ---------- clock
-let started = false, ended = false, clock = 0;
+let started = false, ended = false, clock = 0, slow = 0;
 const fake = qs.has('fake'), hold = qs.has('hold'), t0 = +qs.get('t') || 0;
 function start() {
   if (started && !ended) return;
@@ -216,7 +234,7 @@ addEventListener('keydown', e => {
 // ---------- engine object
 const E = window.E = {
   S, cues, O, I, P, DEF, F, ptr, t: 0, dt: .016, T: 0, W: 0, H: 0, u: 1, fw: 1, started: false, ended: false,
-  A: { lo: 0, mid: 0, hi: 0, rms: 0, flux: 0 }, beat: 0, beatN: 0, pulse: 0, BEAT,
+  A: { lo: 0, mid: 0, hi: 0, rms: 0, flux: 0, bright: 0 }, beat: 0, beatN: 0, pulse: 0, kick: 0, snap: 0, hush: 0, surge: 0, BEAT,
   clamp, lerp, sm, hash, TAU, env, wordsOf, wordT, cprog, charsShown, cueAt, flow, font,
   scenes: [], post: [], gate: null, onresize: null,
   both(fn) { fn(O, false); fn(I, true); },
@@ -233,7 +251,11 @@ function frame(ms) {
 
   for (const k in E.A) E.A[k] = playing ? env(k, t) : 0;
   const bp = (t - S.beat0) / BEAT; E.beatN = Math.floor(bp); E.beat = bp - E.beatN;
-  E.pulse = playing ? Math.exp(-E.beat * 4.5) * (.25 + .75 * E.A.lo) : 0;
+  // real drum hits (not just the grid): kick drives the pulse, snaps flash, hats grain; hush/surge follow the dynamics
+  E.kick = playing ? Math.exp(-since(S.kicks, t) * 7) : 0; E.snap = playing ? Math.exp(-since(S.snaps, t) * 11) : 0;
+  E.pulse = playing ? Math.max(E.kick * (.4 + .6 * E.A.lo), Math.exp(-E.beat * 4.5) * .3 * E.A.lo) : 0;
+  slow += (E.A.rms - slow) * (1 - Math.exp(-dt * .9)); E.hush = playing ? clamp(1 - slow * 2.6) : 0;
+  E.surge = Math.max(E.surge * Math.exp(-dt * 2.2), playing ? clamp((E.A.rms - slow - .22) * 3) : 0);
 
   // pointer
   ptr.auto = T - ptr.last > 2.5;
@@ -266,9 +288,9 @@ function frame(ms) {
   gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tex[cur]); gl.uniform1i(simP.u.uPrev, 0);
   gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, inkTex); gl.uniform1i(simP.u.uInk, 1);
   gl.uniform2f(simP.u.uRes, sw, sh_); gl.uniform1f(simP.u.uT, T); gl.uniform1f(simP.u.uK, K);
-  const U = simP.u; gl.uniform1f(U.uSwirl, P.swirl); gl.uniform1f(U.uTurb, P.turb * (1 + E.A.mid * .8)); gl.uniform1f(U.uShear, P.shear);
+  const U = simP.u; gl.uniform1f(U.uSwirl, P.swirl); gl.uniform1f(U.uTurb, P.turb * (1 + E.A.mid * .8) * (1 - .5 * E.hush)); gl.uniform1f(U.uFine, (.3 + 2.2 * E.A.hi + 1.5 * E.snap) * (1 - .6 * P.freeze)); gl.uniform1f(U.uShear, P.shear);
   gl.uniform1f(U.uDrain, P.drain); gl.uniform1f(U.uDecay, Math.pow(P.decay, K)); gl.uniform1f(U.uInject, P.inject);
-  gl.uniform1f(U.uFreeze, P.freeze); gl.uniform1f(U.uGrav, P.grav); gl.uniform1f(U.uGlitch, P.glitch); gl.uniform1f(U.uZoom, P.zoom + E.pulse * .25 * (P.zoom > .05 ? 1 : 0));
+  gl.uniform1f(U.uFreeze, P.freeze); gl.uniform1f(U.uGrav, P.grav); gl.uniform1f(U.uGlitch, P.glitch); gl.uniform1f(U.uZoom, P.zoom + E.pulse * .25 * (P.zoom > .05 ? 1 : 0) + E.surge * .7);
   gl.uniform2f(U.uPtr, ptr.x / W, 1 - ptr.y / H);
   const pv = ptr.auto ? .35 : 1; gl.uniform2f(U.uPtrV, clamp(ptr.vx / H * .012 * pv, -.03, .03), clamp(-ptr.vy / H * .012 * pv, -.03, .03));
   gl.drawArrays(gl.TRIANGLES, 0, 3); cur = nx;
@@ -276,8 +298,28 @@ function frame(ms) {
   gl.useProgram(showP.p); gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, glc.width, glc.height);
   gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tex[cur]); gl.uniform1i(showP.u.uTex, 0);
   const V = showP.u; gl.uniform2f(V.uRes, glc.width, glc.height); gl.uniform1f(V.uT, T);
-  gl.uniform1f(V.uIrid, P.irid); gl.uniform1f(V.uFluoro, P.fluoro); gl.uniform1f(V.uBlush, P.blush); gl.uniform1f(V.uGlitch, P.glitch); gl.uniform1f(V.uDim, P.dim); gl.uniform1f(V.uPulse, E.pulse);
+  gl.uniform1f(V.uIrid, P.irid); gl.uniform1f(V.uFluoro, P.fluoro); gl.uniform1f(V.uBlush, P.blush); gl.uniform1f(V.uGlitch, P.glitch); gl.uniform1f(V.uDim, P.dim); gl.uniform1f(V.uPulse, E.pulse); gl.uniform1f(V.uSnap, E.snap * (.35 + .65 * E.A.hi)); gl.uniform1f(V.uHat, E.A.hi); gl.uniform1f(V.uBright, E.A.bright);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
+}
+// ?debug shows time / cue number.  ?tap is a timing tool: play, press J (or any letter) on every sung word,
+// press S to save words.js next to index.html; those timings then replace the estimates.
+const dbg = qs.has('debug') || qs.has('tap'), tapMode = qs.has('tap');
+if (dbg) {
+  const hud = document.createElement('div'); hud.style.cssText = 'position:fixed;left:0;right:0;top:0;padding:8px 12px;font:13px/1.5 Menlo,monospace;color:#cfe;background:rgba(0,0,0,.72);z-index:9;white-space:pre-wrap;pointer-events:none';
+  document.body.appendChild(hud);
+  const flat = []; cues.forEach((c, i) => c.text.split(' ').forEach((w, k) => flat.push({ i, k, w, t: null }))); let tp = 0;
+  E.post.push(() => { const i = cueAt(E.t); let s = `${E.t.toFixed(2)}s  cue ${i}  beat ${E.beatN}`;
+    if (tapMode) { while (tp < flat.length && flat[tp].t === null && cues[flat[tp].i + 1] && cues[flat[tp].i + 1].a < E.t - .3) tp++;
+      const cur = flat[tp]; s += `   tapped ${flat.filter(f => f.t !== null).length}/${flat.length}   [letter] = word   [Backspace] = undo   [S] = save\n`;
+      if (cur) s += flat.filter(f => f.i === cur.i).map(f => f === cur ? `[${f.w}]` : f.t !== null ? '·' + f.w : f.w).join(' '); }
+    else if (i >= 0) s += '   ' + cues[i].text; hud.textContent = s; });
+  if (tapMode) addEventListener('keydown', e => {
+    if (!started || e.metaKey || e.ctrlKey) return;
+    if (e.key === 'Backspace') { if (tp > 0) flat[--tp].t = null; return; }
+    if (e.key === 'S') { const out = cues.map((c, i) => { const f = flat.filter(f => f.i === i); return f.every(f => f.t !== null) ? f.map(f => f.t) : null; });
+      const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['// word onsets per cue, made with ?tap\nwindow.SONG_WORDS=' + JSON.stringify(out) + ';\n'], { type: 'text/javascript' })); a.download = 'words.js'; a.click(); return; }
+    if (/^[a-z]$/.test(e.key) && tp < flat.length) flat[tp++].t = +(audio.currentTime - .04).toFixed(3);
+  });
 }
 addEventListener('resize', resize);
 resize(); ptr.x = ptr.tx = W / 2; ptr.y = ptr.ty = H / 2;
