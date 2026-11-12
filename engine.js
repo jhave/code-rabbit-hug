@@ -126,7 +126,7 @@ void main(){
 
 function sh(type, src) { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
   if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; }
-function prog(fs) { const p = gl.createProgram(); gl.attachShader(p, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs));
+function prog(fs, vs = VS) { const p = gl.createProgram(); gl.attachShader(p, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs));
   gl.bindAttribLocation(p, 0, 'a'); gl.linkProgram(p);
   if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
   const u = {}; const n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
@@ -159,6 +159,135 @@ function resize() {
   E.W = W; E.H = H; E.u = Math.min(W, H) / 100; E.fw = Math.min(W, H * 1.75);
   if (E.onresize) E.onresize();
 }
+
+// ---------- grains: ~150k GPU particles. Every lyric word (and some big shapes) is a set of targets with an
+// arrival time; grains leave wherever they are so that they LAND on the word's onset, hold while it is sung,
+// then burst back into the same flow field as the fluid. Matter is conserved: old lines become new ones.
+const G = (() => {
+  const off = { ok: false, once() {}, word() {}, shape() {}, releaseAll() {}, step() {}, draw() {}, rewind() {} };
+  if (!gl.getExtension('EXT_color_buffer_float') || qs.has('nograins')) return off;
+  const N = Math.min(screen.width, screen.height) < 700 ? 256 : 384, NN = N * N;
+  const FLOW = `
+uniform float uT,uW,uK,uDt,uAsp,uSwirl,uTurb,uShear,uDrain,uGrav,uZoom,uFine,uFreeze,uKick,uSnap,uSurge;
+uniform vec2 uPtrP,uPtrV;
+vec2 flow(vec2 p){
+  vec2 f=(curl(p*1.6+vec2(0.,uW*.04))+.5*curl(p*4.1-vec2(uW*.07,0.)))*.0016*uTurb;
+  f+=curl(p*11.+vec2(uW*.3,-uW*.2))*.0007*uFine;
+  float r=length(p);
+  f+=vec2(-p.y,p.x)*uSwirl*.011/(.18+r); f-=p*uDrain*.007/(.25+r); f+=p*uZoom*.006;
+  f.x+=uShear*.0045*(.65+.35*sin(p.y*7.+uW*1.3)); f.y-=uGrav*.0028;
+  vec2 d=p-uPtrP; f+=uPtrV*exp(-dot(d,d)*26.);
+  return f*1.9; }`;
+  const UPD = `#version 300 es
+precision highp float; precision highp sampler2D;
+uniform sampler2D uState,uTgt; in vec2 v; out vec4 o;
+${NOISE}${FLOW}
+void main(){
+  ivec2 ij=ivec2(gl_FragCoord.xy); vec4 s=texelFetch(uState,ij,0), g=texelFetch(uTgt,ij,0);
+  vec2 p=s.xy; float heat=s.z, seed=s.w, tau=g.z-uT, travel=.5+.4*seed;
+  if(g.w>uT && tau<travel){
+    if(tau>0.){ float a=min(1.,uDt/tau); vec2 d=g.xy-p;
+      p+=d*a+vec2(-d.y,d.x)*a*sin(seed*40.)*.7*smoothstep(0.,.3,tau); heat=0.; }
+    else { float tk=floor(uW*30.); vec2 j=vec2(h1(vec2(seed*91.,tk)),h1(vec2(seed*17.,tk+3.)))-.5;
+      float amp=.0012+.007*uKick+.035*uSnap*step(.94,h1(vec2(seed*7.,floor(uW*8.))));
+      vec2 dp=g.xy-uPtrP; vec2 push=normalize(dp+1e-5)*exp(-dot(dp,dp)*260.)*.035;
+      p=mix(p,g.xy+j*amp+push,1.-exp(-uDt*22.)); heat=1.; }
+  } else {
+    vec2 f=flow(p);
+    f+=(vec2(h1(vec2(seed,1.)),h1(vec2(seed,2.)))-.5)*heat*.022;
+    f+=normalize(p+1e-4)*uSurge*.012*(.3+seed);
+    p+=f*uK*(1.-uFreeze)*(.55+.9*seed);
+    heat*=exp(-uDt*2.4);
+    float hx=uAsp*.5+.03;
+    if(uDrain>.3 && length(p)<.022){ float a=seed*6.283+uW; p=vec2(cos(a),sin(a))*(.75+.35*h1(vec2(seed,floor(uW*60.)))); }
+    if(uGrav>.3) p.y=max(p.y,-.5+.09*h1(vec2(seed*3.,5.))); else p.y=mod(p.y+.53,1.06)-.53;
+    p.x=mod(p.x+hx,2.*hx)-hx;
+  }
+  o=vec4(p,heat,seed);
+}`;
+  const PVS = `#version 300 es
+precision highp float; precision highp sampler2D;
+uniform sampler2D uState,uTgt,uCol; uniform float uT,uW,uAsp,uSize,uFreeze,uGlitch,uHat,uGain; uniform int uN;
+out vec4 vc;
+${NOISE}
+void main(){
+  ivec2 ij=ivec2(gl_VertexID%uN,gl_VertexID/uN); vec4 s=texelFetch(uState,ij,0), g=texelFetch(uTgt,ij,0), c=texelFetch(uCol,ij,0);
+  vec2 p=s.xy;
+  if(uFreeze>.01) p=mix(p,floor(p*64.+.5)/64.+vec2(mod(floor(p.y*64.+.5),2.)*.0078,0.),uFreeze);
+  if(uGlitch>.01){ float row=floor((p.y+.5)*26.); if(h1(vec2(row,floor(uW*9.)))>1.-uGlitch*.22) p.x+=(h1(vec2(row,3.))-.5)*.08; }
+  float tau=g.z-uT, live=step(uT,g.w), held=live*step(tau,0.), appr=live*step(0.,tau)*step(tau,.9);
+  float tw=.6+.4*sin(uW*3.+s.w*50.);
+  float a=held>.5?.8:appr>.5?.55:(.085+.16*uHat*step(.75,s.w))*tw;
+  vec3 col=mix(c.rgb,vec3(.72,.9,1.),uFreeze*.75)+s.z*.35*(1.-held);
+  vc=vec4(col*a*uGain,1.);
+  gl_Position=vec4(p.x/uAsp*2.,p.y*2.,0.,1.);
+  gl_PointSize=uSize*(.75+.6*c.a)*(held>.5?1.2:appr>.5?1.:.8);
+}`;
+  const PFS = `#version 300 es
+precision highp float; in vec4 vc; out vec4 o;
+void main(){ float m=smoothstep(.5,.12,length(gl_PointCoord-.5)); o=vec4(vc.rgb*m,0.); }`;
+  const up = prog(UPD), pp = prog(PFS, PVS), vao = gl.createVertexArray();
+  const raw = () => { gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false); gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false); };
+  const cooked = () => { gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true); gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true); };
+  const ftex = data => { const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, N, N, 0, gl.RGBA, gl.FLOAT, data);
+    for (const k of [gl.TEXTURE_MIN_FILTER, gl.TEXTURE_MAG_FILTER]) gl.texParameteri(gl.TEXTURE_2D, k, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE); return t; };
+  raw();
+  const init = new Float32Array(NN * 4); for (let i = 0; i < NN; i++) { init[i * 4] = (Math.random() - .5) * 2; init[i * 4 + 1] = Math.random() - .5; init[i * 4 + 3] = Math.random(); }
+  const st = [ftex(init), ftex(init)], sf = st.map(t => { const f = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, f); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0); return f; });
+  const tgt = new Float32Array(NN * 4).fill(-1), col = new Uint8Array(NN * 4); for (let i = 0; i < NN; i++) { const q = i * 4, h = Math.random(); col[q] = 150 + 90 * h; col[q + 1] = 150 + 80 * Math.random(); col[q + 2] = 190 + 60 * Math.random(); col[q + 3] = Math.random() * 255; }
+  const tt = ftex(tgt), ct = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, ct); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, N, N, 0, gl.RGBA, gl.UNSIGNED_BYTE, col);
+  for (const k of [gl.TEXTURE_MIN_FILTER, gl.TEXTURE_MAG_FILTER]) gl.texParameteri(gl.TEXTURE_2D, k, gl.NEAREST);
+  cooked(); gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  let gc = 0, gp = 0, dirty = false; const seen = new Set();
+  const rc = document.createElement('canvas'), rx = rc.getContext('2d', { willReadFrequently: true });
+  const rgbOf = c => { const m = /^#([0-9a-f]{6})$/i.exec(c || ''); if (!m) return [243, 239, 230]; const v = parseInt(m[1], 16); return [v >> 16, (v >> 8) & 255, v & 255]; };
+  function put(x, y, arr, rel, rgb) { const q = gp * 4; gp = (gp + 1) % NN; tgt[q] = (x - W / 2) / H; tgt[q + 1] = (H / 2 - y) / H; tgt[q + 2] = arr; tgt[q + 3] = rel;
+    const j = .78 + .3 * Math.random(); col[q] = Math.min(255, rgb[0] * j); col[q + 1] = Math.min(255, rgb[1] * j); col[q + 2] = Math.min(255, rgb[2] * j); col[q + 3] = Math.random() * 255; dirty = true; }
+  function lit(w, h) { const d = rx.getImageData(0, 0, w, h).data, out = []; for (let i = 3, k = 0; i < d.length; i += 4, k++) if (d[i] > 90) out.push(k); return out; }
+  return {
+    ok: true, N,
+    once(key, fn) { if (seen.has(key)) return; seen.add(key); fn(); },
+    rewind() { seen.clear(); },
+    // one word: grains sweep in left-to-right so the word "writes itself" across its sung slot
+    word(text, size, fam, style, x, y, a, b, rel, color, dens = 1) {
+      font(rx, size, fam, style); const tw = Math.ceil(rx.measureText(text).width) + 8, th = Math.ceil(size * 1.7);
+      if (tw < 9 || tw > 4000) return; rc.width = tw; rc.height = th; font(rx, size, fam, style); rx.fillStyle = '#fff'; rx.fillText(text, 4, th / 2);
+      const L = lit(tw, th); if (!L.length) return; const n = Math.round(clamp(L.length * .5, 90, 5200) * dens), rgb = rgbOf(color), sweep = Math.min(.24, (b - a) * .6);
+      for (let k = 0; k < n; k++) { const px = L[(Math.random() * L.length) | 0], lx = px % tw + Math.random(), ly = ((px / tw) | 0) + Math.random();
+        put(x + lx - 4, y + ly - th / 2, a + sweep * lx / tw, rel, rgb); }
+    },
+    // any drawing (in CSS px, white): n grains land on it at `arr`, leave at `rel`
+    shape(draw, n, arr, rel, color) {
+      const sc = Math.min(1, 720 / W), w = Math.ceil(W * sc), h = Math.ceil(H * sc); rc.width = w; rc.height = h; rx.setTransform(sc, 0, 0, sc, 0, 0); rx.fillStyle = rx.strokeStyle = '#fff'; draw(rx); rx.setTransform(1, 0, 0, 1, 0, 0);
+      const L = lit(w, h); if (!L.length) return; const rgb = rgbOf(color); n = Math.min(n, NN);
+      for (let k = 0; k < n; k++) { const px = L[(Math.random() * L.length) | 0]; put((px % w + Math.random()) / sc, (((px / w) | 0) + Math.random()) / sc, typeof arr === 'function' ? arr(Math.random()) : arr, rel, rgb); }
+    },
+    releaseAll(at) { for (let q = 3; q < NN * 4; q += 4) if (tgt[q] > at) tgt[q] = at; dirty = true; seen.clear(); },
+    step(T, t, dt) {
+      if (dirty) { raw(); gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, tt); gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, N, N, gl.RGBA, gl.FLOAT, tgt);
+        gl.bindTexture(gl.TEXTURE_2D, ct); gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, N, N, gl.RGBA, gl.UNSIGNED_BYTE, col); cooked(); dirty = false; }
+      const U = up.u, nx = 1 - gc; gl.useProgram(up.p); gl.bindFramebuffer(gl.FRAMEBUFFER, sf[nx]); gl.viewport(0, 0, N, N);
+      gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, st[gc]); gl.uniform1i(U.uState, 2); gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, tt); gl.uniform1i(U.uTgt, 3);
+      gl.uniform1f(U.uT, t); gl.uniform1f(U.uW, T); gl.uniform1f(U.uK, dt * 60); gl.uniform1f(U.uDt, dt); gl.uniform1f(U.uAsp, W / H);
+      gl.uniform1f(U.uSwirl, P.swirl); gl.uniform1f(U.uTurb, P.turb * (1 + E.A.mid * .8) * (1 - .5 * E.hush)); gl.uniform1f(U.uShear, P.shear); gl.uniform1f(U.uDrain, P.drain);
+      gl.uniform1f(U.uGrav, P.grav); gl.uniform1f(U.uZoom, P.zoom); gl.uniform1f(U.uFine, .3 + 2.2 * E.A.hi + 1.5 * E.snap); gl.uniform1f(U.uFreeze, clamp(P.freeze));
+      gl.uniform1f(U.uKick, E.kick); gl.uniform1f(U.uSnap, E.snap); gl.uniform1f(U.uSurge, E.surge);
+      gl.uniform2f(U.uPtrP, (ptr.x / W - .5) * W / H, .5 - ptr.y / H); const pv = ptr.auto ? .35 : 1; gl.uniform2f(U.uPtrV, clamp(ptr.vx / H * .012 * pv, -.03, .03), clamp(-ptr.vy / H * .012 * pv, -.03, .03));
+      gl.drawArrays(gl.TRIANGLES, 0, 3); gc = nx; this.t = t; this.T = T;
+    },
+    draw(fb, w, h, size, gain) {
+      const U = pp.u; gl.useProgram(pp.p); gl.bindFramebuffer(gl.FRAMEBUFFER, fb); gl.viewport(0, 0, w, h); gl.bindVertexArray(vao);
+      gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE); gl.colorMask(true, true, true, false);
+      gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, st[gc]); gl.uniform1i(U.uState, 2); gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, tt); gl.uniform1i(U.uTgt, 3);
+      gl.activeTexture(gl.TEXTURE4); gl.bindTexture(gl.TEXTURE_2D, ct); gl.uniform1i(U.uCol, 4);
+      gl.uniform1f(U.uT, this.t); gl.uniform1f(U.uW, this.T); gl.uniform1f(U.uAsp, W / H); gl.uniform1f(U.uSize, size); gl.uniform1f(U.uGain, gain); gl.uniform1i(U.uN, N);
+      gl.uniform1f(U.uFreeze, clamp(P.freeze)); gl.uniform1f(U.uGlitch, P.glitch); gl.uniform1f(U.uHat, E.A.hi);
+      gl.drawArrays(gl.POINTS, 0, NN);
+      gl.disable(gl.BLEND); gl.colorMask(true, true, true, true); gl.bindVertexArray(null); gl.activeTexture(gl.TEXTURE0);
+    },
+  };
+})();
 
 // ---------- params
 const DEF = { swirl: 0, turb: 1, shear: 0, drain: 0, decay: .972, inject: 1, irid: .35, fluoro: 0, blush: 0, glitch: 0, freeze: 0, grav: 0, zoom: 0, dim: 0 };
@@ -217,11 +346,11 @@ addEventListener('pointerdown', e => { ptr.tx = e.clientX; ptr.ty = e.clientY; p
 addEventListener('pointerup', () => ptr.down = false);
 
 // ---------- clock
-let started = false, ended = false, clock = 0, slow = 0;
+let started = false, ended = false, clock = 0, slow = 0, lastT = 0;
 const fake = qs.has('fake'), hold = qs.has('hold'), t0 = +qs.get('t') || 0;
 function start() {
   if (started && !ended) return;
-  clock = ended ? 0 : t0; started = true; ended = false;
+  clock = ended ? 0 : t0; started = true; ended = false; G.releaseAll(clock + .25);
   if (!fake) { audio.currentTime = clock; audio.play().catch(() => { started = false; }); }
 }
 audio.addEventListener('ended', () => { ended = true; });
@@ -236,12 +365,12 @@ const E = window.E = {
   S, cues, O, I, P, DEF, F, ptr, t: 0, dt: .016, T: 0, W: 0, H: 0, u: 1, fw: 1, started: false, ended: false,
   A: { lo: 0, mid: 0, hi: 0, rms: 0, flux: 0, bright: 0 }, beat: 0, beatN: 0, pulse: 0, kick: 0, snap: 0, hush: 0, surge: 0, BEAT,
   clamp, lerp, sm, hash, TAU, env, wordsOf, wordT, cprog, charsShown, cueAt, flow, font,
-  scenes: [], post: [], gate: null, onresize: null,
+  scenes: [], post: [], gate: null, onresize: null, G,
   both(fn) { fn(O, false); fn(I, true); },
 };
 
-function frame(ms) {
-  requestAnimationFrame(frame);
+function frame(ms, manual) {
+  if (manual !== true) requestAnimationFrame(frame);
   const T = ms / 1000, dt = Math.min(.05, Math.max(.001, T - E.T)); E.T = T; E.dt = dt;
   if (fake) { if (!started) start(); if (!hold) clock += dt; if (clock >= S.dur) ended = true; }
   else if (started && !audio.paused) { clock += dt * audio.playbackRate; const d = audio.currentTime - clock; clock = Math.abs(d) > .08 ? audio.currentTime : clock + d * .1; }
@@ -294,12 +423,14 @@ function frame(ms) {
   gl.uniform2f(U.uPtr, ptr.x / W, 1 - ptr.y / H);
   const pv = ptr.auto ? .35 : 1; gl.uniform2f(U.uPtrV, clamp(ptr.vx / H * .012 * pv, -.03, .03), clamp(-ptr.vy / H * .012 * pv, -.03, .03));
   gl.drawArrays(gl.TRIANGLES, 0, 3); cur = nx;
+  if (G.ok) { if (t < lastT - .5) G.rewind(); lastT = t; G.step(T, t, dt); G.draw(fbo[cur], sw, sh_, 1.6, .045); }
   // show
   gl.useProgram(showP.p); gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, glc.width, glc.height);
   gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tex[cur]); gl.uniform1i(showP.u.uTex, 0);
   const V = showP.u; gl.uniform2f(V.uRes, glc.width, glc.height); gl.uniform1f(V.uT, T);
   gl.uniform1f(V.uIrid, P.irid); gl.uniform1f(V.uFluoro, P.fluoro); gl.uniform1f(V.uBlush, P.blush); gl.uniform1f(V.uGlitch, P.glitch); gl.uniform1f(V.uDim, P.dim); gl.uniform1f(V.uPulse, E.pulse); gl.uniform1f(V.uSnap, E.snap * (.35 + .65 * E.A.hi)); gl.uniform1f(V.uHat, E.A.hi); gl.uniform1f(V.uBright, E.A.bright);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
+  if (G.ok) G.draw(null, glc.width, glc.height, 1.55 * dpr, 1);
 }
 // ?debug shows time / cue number.  ?tap is a timing tool: play, press J (or any letter) on every sung word,
 // press S to save words.js next to index.html; those timings then replace the estimates.
@@ -324,4 +455,5 @@ if (dbg) {
 addEventListener('resize', resize);
 resize(); ptr.x = ptr.tx = W / 2; ptr.y = ptr.ty = H / 2;
 E.go = () => requestAnimationFrame(frame);
+E.run = (sec, fps = 60) => { let ms = E.T * 1000; for (let i = 0; i < sec * fps; i++) frame(ms += 1000 / fps, true); return E.t; }; // debugging: advance synchronously
 })();

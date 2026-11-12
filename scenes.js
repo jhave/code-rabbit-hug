@@ -5,7 +5,7 @@
 (() => {
 const E = window.E; if (!E) return;
 const { cues, O, I, F, A, ptr, clamp, lerp, sm, hash, TAU, font, flow, wordsOf, wordT, cprog, charsShown, cueAt, BEAT } = E;
-const PI = Math.PI;
+const PI = Math.PI, G = E.G;
 const rgba = (r, g, b, a) => `rgba(${r | 0},${g | 0},${b | 0},${a})`;
 const COL = { paper: '#f3efe6', mint: '#7dffc8', pink: '#ff7ac8', amber: '#ffc861', blue: '#6fb6ff', red: '#ff5a5f', green: '#3fd47a', violet: '#b79cff', dim: '#8d8fa3' };
 const PAL = [COL.mint, COL.pink, COL.amber, COL.blue, COL.violet];
@@ -16,6 +16,7 @@ function words(c, i, cx, cy, o = {}) {
   font(c, size, o.fam || F.serif, o.style || '');
   const src = o.upper ? wordsOf(i).map(w => ({ ...w, w: w.w.toUpperCase() })) : wordsOf(i);
   const L = flow(c, src, o.maxW || Math.min(E.W * .84, E.fw * .8), (o.lh || 1.28) * size);
+  if (!ink && o.grains !== false) G.once('c' + i, () => { for (const w of L) G.word(w.w, size, o.fam || F.serif, o.style || '', cx + w.x, cy + w.y, w.a, w.b, nextA(i) + .12, typeof o.col === 'function' ? o.col(w) : (o.gcol || o.col || COL.paper)); });
   const k = (o.k ?? 1) * (ink ? (o.ink ?? .07) : 1);
   if (k <= 0) return L;
   for (const w of L) {
@@ -33,7 +34,8 @@ const para = (i, cx, cy, o) => { let L; E.both(c => { L = words(c, i, cx, cy, o)
 const fit = (text, maxW, maxSize, fam, style = '') => { font(O, 100, fam, style); return Math.min(maxSize, 100 * maxW / O.measureText(text).width); };
 const nextA = i => cues[i + 1] ? cues[i + 1].a : 1e9;
 const lineK = i => E.t < cues[i].a ? 0 : 1 - sm(0, .3, E.t - nextA(i));
-const seq = (i0, i1, fn) => { for (let i = i0; i <= i1; i++) { const lk = lineK(i); if (lk > 0) fn(i, lk); } };
+// lines are also called (invisibly, lk = 0) shortly before they start, so their grains can already be in flight
+const seq = (i0, i1, fn) => { for (let i = i0; i <= i1; i++) { const lk = lineK(i); if (lk > 0) fn(i, lk); else if (E.t < cues[i].a && E.t > cues[i].a - .75) fn(i, 0); } };
 function rr(c, x, y, w, h, r) { c.beginPath(); if (c.roundRect) c.roundRect(x, y, w, h, r); else c.rect(x, y, w, h); }
 function aster(c, x, y, r, rot, col, lw, a) {
   c.save(); c.translate(x, y); c.rotate(rot); c.globalAlpha = a; c.strokeStyle = col; c.lineWidth = lw; c.lineCap = 'round'; c.beginPath();
@@ -47,6 +49,7 @@ function bunny(c, x, y, s, ci, a = 1) {
   c.globalAlpha = 1; c.textAlign = 'left';
 }
 const add = (a, b, P, draw, f) => E.scenes.push({ a, b, P, draw, f });
+const gText = (txt, size, fam, style, x, y, ls) => c => { font(c, size, fam, style); c.textAlign = 'center'; if (ls && 'letterSpacing' in c) c.letterSpacing = ls; String(txt).split('\n').forEach((ln, j, arr) => c.fillText(ln, x, y + (j - (arr.length - 1) / 2) * size * 1.08)); if ('letterSpacing' in c) c.letterSpacing = '0px'; c.textAlign = 'left'; };
 
 // ---------- ambient ensembles (reused, so later sections can reprise earlier ones)
 function ghostLines(k, amt) {
@@ -141,7 +144,8 @@ const callRabbits = (n, x, y, rad = 13) => { if (n > R.want) { R.want = Math.flo
 // ============================================================ gate
 E.gate = () => {
   const { W, H, u, T } = E, s = Math.min(17 * u, E.fw * .15);
-  E.both((c, ink) => { font(c, s, F.disp, 'italic'); c.textAlign = 'center'; c.fillStyle = COL.paper; c.globalAlpha = ink ? .035 : .9 + .1 * Math.sin(T * 1.7);
+  G.once('gate' + (E.ended ? 1 : 0) + W, () => G.shape(gText(E.ended ? 'Listen again:' : 'Listen:', s, F.disp, 'italic', W / 2, H * .46), 60000, -1, 1e9, COL.paper));
+  E.both((c, ink) => { font(c, s, F.disp, 'italic'); c.textAlign = 'center'; c.fillStyle = COL.paper; c.globalAlpha = ink ? .02 : G.ok ? .38 + .08 * Math.sin(T * 1.7) : .92;
     c.fillText(E.ended ? 'Listen again:' : 'Listen:', W / 2, H * .46); });
   font(O, 1.6 * u, F.mono); O.textAlign = 'center'; O.fillStyle = COL.dim; O.globalAlpha = .8;
   if ('letterSpacing' in O) O.letterSpacing = '.22em';
@@ -159,6 +163,7 @@ add(-1, 18.6, { turb: 1.1, irid: .4 }, ({ k }) => {
   E.both((c, ink) => {
     font(c, size, F.serif);
     const L = flow(c, wordsOf(0), Math.min(W * .8, size * 22), size * 1.5);
+    if (!ink) G.once('c0', () => { for (const w of L) G.word(w.w, size, F.serif, '', W / 2 + w.x, H * .47 + w.y, w.a, w.b, /unstuck/.test(w.w) ? w.b + .5 : 13.9, /pull-request/.test(w.w) ? COL.mint : /they/.test(w.w) ? COL.pink : COL.paper); });
     for (const w of L) {
       const age = t - w.a; if (age < 0) continue;
       const v = hash(w.i * 7.7) - .5, stuck = /unstuck/.test(w.w), dir = v < 0 ? -1 : 1;
@@ -184,6 +189,7 @@ add(18.6, 38.85, t => ({ irid: lerp(.4, .95, sm(23, 38, t)), turb: 1.25, swirl: 
     aster(O, x, y, r * (1 + E.beat * .4), n * .7 + E.snap * .4, PAL[((n % 5) + 5) % 5], (.35 + .5 * E.kick) * u, k * Math.exp(-E.beat * 3.2) * .9);
     aster(I, x, y, r, n * .7, PAL[((n % 5) + 5) % 5], .9 * u, k * .55 * (1 - E.beat));
   }
+  if (t > 26.6 && t < 30) G.once('title', () => G.shape(gText('code-rabbit hugs', 2.7 * u, F.mono, 'bold', W / 2, H * .5, '.4em'), 26000, r => 27.6 + r * .9, 36.4, COL.mint));
   const ta = sm(27, 29, t) * (1 - sm(35.5, 37.8, t));
   if (ta > 0) { font(O, 2.7 * u, F.mono, 'bold'); O.textAlign = 'center'; O.fillStyle = COL.paper; O.globalAlpha = ta * k; if ('letterSpacing' in O) O.letterSpacing = '.4em';
     O.fillText('code-rabbit hugs', W / 2, H * .5); font(O, 1.4 * u, F.mono); O.textAlign = 'center'; O.fillStyle = COL.dim; if ('letterSpacing' in O) O.letterSpacing = '.25em';
@@ -282,6 +288,8 @@ add(68.7, 83.6, t => t < 79.3 ? { turb: .9, grav: .3, irid: .4 } : { grav: 1.3, 
 add(83.6, 92.2, { swirl: .75, drain: .5, irid: .75, turb: .7 }, ({ k }) => {
   const { W, H, u, t } = E, f = lineK(14), q15 = clamp((t - cues[15].a) / ((wordsOf(15).end - cues[15].a) * .9));
   stars(k * (t < cues[15].a ? .5 : 1), t < cues[15].a ? 0 : q15, true);
+  if (t > cues[15].a - .2) G.once('smile', () => { const cx = W / 2, cy = H * .42; G.shape(c => { c.lineWidth = 1.5 * u; c.lineCap = 'round'; c.beginPath(); c.moveTo(cx - 20 * u, cy - u); c.quadraticCurveTo(cx + 4 * u, cy + 14 * u, cx + 23 * u, cy - 8 * u); c.stroke(); },
+    80000, r => wordT(15, /cosmos/) + r * (wordsOf(15).end - wordT(15, /cosmos/)), 92.05, COL.paper); });
   if (f > 0) {
     for (let j = 0; j < 11; j++) { const yy = lerp(H * .14, H * .84, j / 10), rx = E.fw * .42 * Math.exp(-j * .33) + 2 * u, ox = Math.sin(t * 1.5 + j * .5) * (10 - j) * .5 * u;
       E.both((c, ink) => { c.globalAlpha = k * f * (ink ? .05 : .3); c.strokeStyle = COL.violet; c.lineWidth = ink ? 2 : 1; c.setLineDash(ink ? [] : [6, 5]); c.lineDashOffset = -t * 30; c.beginPath(); c.ellipse(W / 2 + ox, yy, rx, rx * .16, 0, 0, TAU); c.stroke(); c.setLineDash([]); }); }
@@ -306,7 +314,9 @@ function chorus(base, k, big) {
   O.globalAlpha = k * .55; O.fillStyle = '#07080e'; rr(O, x0 - 3 * u, y0 - lh * 1.1, bw + 6 * u, lh * 9.2, 1.5 * u); O.fill(); O.globalAlpha = 1;
   let wrapQ = 0;
   for (let n = 0; n < 8; n++) {
-    const i = base + n, c = cues[i]; if (t < c.a) break;
+    const i = base + n, c = cues[i]; if (t < c.a - .75) break;
+    G.once('ch' + i, () => { let ci = n === 6 ? 3 : 0; for (const w of wordsOf(i)) { G.word(w.w, size, F.mono, n === 0 ? 'bold' : '', xt + ci * cw, y0 + n * lh, w.a, w.b, nextA(i) + 2.2, PAL[(n + w.i) % 5], .8); ci += w.w.length + 1; } });
+    if (t < c.a) break;
     const y = y0 + n * lh, pre = n === 6 ? 3 : 0, shown = charsShown(i) + pre, cur = t < nextA(i) && n < 7 || (n === 7 && t < wordsOf(i).end + .5);
     font(O, size * .8, F.mono); O.textAlign = 'right'; O.globalAlpha = k * fk * (n === 2 ? 1 : .45); O.fillStyle = n === 2 ? COL.red : COL.dim; O.fillText((n === 2 ? '● ' : '') + (40 + n), xt - cw * 1.4, y); O.textAlign = 'left';
     font(O, size, F.mono, n === 0 ? 'bold' : ''); O.globalAlpha = k * fk;
@@ -340,6 +350,13 @@ function chorus(base, k, big) {
     c.fillText('{', x0 - 5 * u - o, H / 2); c.fillText('}', x0 + bw + 5 * u + o, H / 2); c.textAlign = 'left'; c.globalAlpha = 1; });
   O.globalAlpha = 1;
   callRabbits((big ? 84 : 38) * sm(0, 4, t - cues[base].a) * k, ptr.x, ptr.y, big ? 20 : 13);
+  // grain set-pieces: a heart (or a rabbit) on "hugs", a 42, an asterisk for each "so it goes"
+  const th = wordT(base, /hugs/), t42 = wordT(base + 2, /forty/), w3 = wordsOf(base + 3);
+  if (t > th - 1) G.once('hug' + base, () => big
+    ? G.shape(gText('(\\_/)\n(•.•)\n/ >♥', 15 * u, F.mono, 'bold', W / 2, H / 2), 70000, r => th - .25 + r * .3, th + 1.5, COL.pink)
+    : G.shape(gText('♥', 58 * u, F.sans, '', W / 2, H * .53), 45000, r => th - .05 + r * .12, th + 1.25, '#ff4f8b'));
+  if (t > t42 - 1) G.once('42' + base, () => G.shape(gText('42', 44 * u, F.mono, 'bold', W / 2, H * .5), 42000, r => t42 + r * .2, t42 + 1.05, COL.red));
+  [0, 3].forEach(j => { if (t > w3[j].a - 1) G.once('sig' + base + j, () => G.shape(c => { c.lineWidth = 2.2 * u; c.lineCap = 'round'; c.translate(W * (j ? .72 : .28), H / 2); c.rotate(j); c.beginPath(); for (let q = 0; q < 4; q++) { const g = q * PI / 4, r = 20 * u; c.moveTo(-Math.cos(g) * r, -Math.sin(g) * r); c.lineTo(Math.cos(g) * r, Math.sin(g) * r); } c.stroke(); }, 30000, r => w3[j].a + r * .08, w3[j].a + .55, COL.amber)); });
 }
 add(92.2, 122.7, { fluoro: .9, irid: .45, turb: 1.1 }, ({ k }) => chorus(16, k, false));
 
@@ -453,7 +470,7 @@ function beadsStep(mode, k, q) {
   }
   O.globalAlpha = I.globalAlpha = 1;
 }
-add(154.0, 164.75, { turb: .9, irid: .3, decay: .97 }, ({ k }) => {
+add(154.0, 164.75, t => ({ turb: .9, irid: .3, decay: .97, grav: t > wordT(35, /catacomb/) && t < cues[36].a ? 1.4 : t >= wordT(36, /salvation/) ? -1.6 : 0 }), ({ k }) => {
   const { W, H, u, t } = E, size = Math.min(4.8 * u, E.fw * .046), tc = wordT(35, /catacomb/);
   beadsStep(t < cues[35].a ? 'build' : t < tc ? 'rack' : t < cues[36].a ? 'fall' : 'rise', k, cprog(34));
   seq(34, 34, (i, lk) => para(i, W / 2, H * .28, { size, fam: F.disp, k: k * lk, col: w => /styrofoam/.test(w.w) ? '#fff' : COL.paper }));
@@ -544,6 +561,10 @@ add(233.7, 255.5, t => t < 243.8 ? { turb: .3, irid: .3, decay: .955, dim: .2 } 
     O.globalAlpha = bq; O.strokeStyle = COL.paper; O.lineWidth = .35 * u; O.lineCap = 'round'; O.beginPath(); O.moveTo(bx - 4 * u, by); O.quadraticCurveTo(bx - 2 * u, by - fl - u, bx, by); O.quadraticCurveTo(bx + 2 * u, by - fl - u, bx + 4 * u, by); O.stroke(); O.globalAlpha = 1;
   }
   const c50 = cues[50].a;
+  if (t > c50 - .55 && t < c50 + 1) G.once('lgtm', () => { const size = fit('LGTM', E.fw * .46, 22 * u, F.mono, 'bold');
+    G.shape(c => { c.translate(W / 2, H * .5); c.rotate(-.05); font(c, size, F.mono, 'bold'); c.textAlign = 'center'; const tw = c.measureText('LGTM').width; c.fillText('LGTM', 0, 0); c.lineWidth = size * .05; rr(c, -tw / 2 - size * .25, -size * .68, tw + size * .5, size * 1.36, size * .14); c.stroke(); },
+      G.N * G.N, r => c50 + .5 + r * .1, 243.82, COL.green); });
+  if (t > 251.6) G.once('last', () => G.shape(c => { c.lineWidth = .5 * u; c.lineCap = 'round'; c.translate(W / 2, H / 2); c.beginPath(); for (let q = 0; q < 4; q++) { const g = q * PI / 4, r = 2 * u; c.moveTo(-Math.cos(g) * r, -Math.sin(g) * r); c.lineTo(Math.cos(g) * r, Math.sin(g) * r); } c.stroke(); }, 50000, r => 252.5 + r * .6, 254.5, COL.paper));
   if (t >= c50 && kk > 0) {
     const noA = sm(0, .15, t - c50) * (1 - sm(1.8, 2.6, t - c50));
     font(O, 5 * u, F.serif, 'italic'); O.textAlign = 'center'; O.fillStyle = COL.paper; O.globalAlpha = kk * noA; O.fillText('No—', W / 2, H * .3); O.textAlign = 'left';
