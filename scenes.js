@@ -17,7 +17,7 @@ function words(c, i, cx, cy, o = {}) {
   font(c, size, o.fam || F.serif, o.style || '');
   const src = o.upper ? wordsOf(i).map(w => ({ ...w, w: w.w.toUpperCase() })) : wordsOf(i);
   const L = flow(c, src, o.maxW || Math.min(E.W * .84, E.fw * .8), (o.lh || 1.28) * size);
-  if (!ink && o.grains !== false) G.once('c' + i, () => { for (const w of L) G.word(w.w, size, o.fam || F.serif, o.style || '', cx + w.x, cy + w.y, w.a, w.b, nextA(i) + .12, typeof o.col === 'function' ? o.col(w) : (o.gcol || o.col || COL.paper)); });
+  if (!ink && o.grains !== false) G.once('c' + i, () => { for (const w of L) G.word(w.w, size, o.fam || F.serif, o.style || '', cx + w.x, cy + w.y, w.a, w.b, o.rel ?? nextA(i) + .12, typeof o.col === 'function' ? o.col(w) : (o.gcol || o.col || COL.paper)); });
   const k = (o.k ?? 1) * (ink ? (o.ink ?? .07) : 1);
   if (k <= 0) return L;
   for (const w of L) {
@@ -96,12 +96,13 @@ function tickets(k, ghostT) {
   }
 }
 const SPR = ['0101011111111110111000100', '0111011011111111010110101', '0010001110111111111101110', '0010001110001000010000100'];
-function beads(k, amt) { // tamagotchi rosary
-  const { W, H, u } = E, N = 28, act = ((E.beatN % N) + N) % N, ex = Math.min(W * .44, H * .8), ey = H * .42;
+function beads(k, amt, pos) { // tamagotchi rosary
+  const { W, H, u } = E, N = 28, act = pos === undefined ? ((E.beatN % N) + N) % N : Math.floor(pos) % N, ex = Math.min(W * .44, H * .8), ey = H * .42;
   O.globalAlpha = .22 * k * amt; O.strokeStyle = '#c9e3a2'; O.lineWidth = 1; O.beginPath(); O.ellipse(W / 2, H / 2, ex, ey, 0, 0, TAU); O.stroke();
   for (let j = 0; j < N; j++) {
-    const g = j / N * TAU - PI / 2, x = W / 2 + Math.cos(g) * ex, y = H / 2 + Math.sin(g) * ey, on = j === act, r = (on ? 3.1 + E.pulse : 2.1) * u;
-    O.globalAlpha = k * amt * (on ? 1 : .42); O.fillStyle = '#b9cf9a'; O.beginPath(); O.arc(x, y, r, 0, TAU); O.fill();
+    const g = j / N * TAU - PI / 2, x = W / 2 + Math.cos(g) * ex, y = H / 2 + Math.sin(g) * ey, back = (act - j + N) % N, on = back === 0, tail = pos === undefined ? 0 : Math.max(0, 1 - back / 7), r = (on ? 3.6 + E.pulse : 2.3 + tail) * u;
+    if (on || tail > .3) { const ab = (.3 + 1.2 * E.main) * u; O.globalAlpha = k * amt * .8; O.fillStyle = '#ff2e5f'; O.beginPath(); O.arc(x - ab, y, r, 0, TAU); O.fill(); O.fillStyle = '#2ee6ff'; O.beginPath(); O.arc(x + ab, y, r, 0, TAU); O.fill(); }
+    O.globalAlpha = k * amt * (on ? 1 : .42 + .5 * tail); O.fillStyle = on ? '#f4ffd8' : '#b9cf9a'; O.beginPath(); O.arc(x, y, r, 0, TAU); O.fill();
     const s = SPR[(j + (on ? Math.floor(E.beat * 2) : E.snap > .6 && hash(j + E.beatN) > .6 ? 1 : 0)) % 4], px = r * .26; O.fillStyle = '#1d2a18';
     for (let q = 0; q < 25; q++) if (s[q] === '1') O.fillRect(x + ((q % 5) - 2.5) * px, y + (Math.floor(q / 5) - 2.5) * px, px * .92, px * .92);
     if (on) { I.globalAlpha = .5 * k * amt * (1 - E.beat); I.fillStyle = PAL[j % 5]; I.beginPath(); I.arc(x, y, r * 1.5, 0, TAU); I.fill(); I.globalAlpha = 1; }
@@ -163,11 +164,11 @@ add(-1, 18.6, { turb: 1.1, irid: .4, field: 0, ring: 0 }, ({ k }) => {
   if (g0 > 0) E.both((c, ink) => { const s = Math.min(17 * u, E.fw * .15); font(c, s, F.disp, 'italic'); c.textAlign = 'center'; c.fillStyle = COL.paper;
     const txt = 'Listen:'; let x = W / 2 - c.measureText(txt).width / 2; c.textAlign = 'left';
     for (let j = 0; j < txt.length; j++) { const wd = c.measureText(txt[j]).width, sp = (j - 3) * t * t * u * .9; c.globalAlpha = g0 * k * (ink ? .04 : 1); c.fillText(txt[j], x + sp, H * .46 + Math.sin(t * 1.3 + j) * t * u * .5); x += wd; } });
-  const fly = Math.max(0, t - 13.9);
+  const fly = Math.max(0, t - 14.25) * 2.4;
   E.both((c, ink) => {
     font(c, size, F.serif);
     const L = flow(c, wordsOf(0), Math.min(W * .8, size * 22), size * 1.5);
-    if (!ink) G.once('c0', () => { for (const w of L) G.word(w.w, size, F.serif, '', W / 2 + w.x, H * .47 + w.y, w.a, w.b, /unstuck/.test(w.w) ? w.b + .5 : 13.9, /pull-request/.test(w.w) ? COL.mint : /they/.test(w.w) ? COL.pink : COL.paper); });
+    if (!ink) G.once('c0', () => { for (const w of L) G.word(w.w, size, F.serif, '', W / 2 + w.x, H * .47 + w.y, w.a, w.b, /unstuck/.test(w.w) ? w.b + .5 : 14.25, /pull-request/.test(w.w) ? COL.mint : /they/.test(w.w) ? COL.pink : COL.paper); });
     for (const w of L) {
       const age = t - w.a; if (age < 0) continue;
       const v = hash(w.i * 7.7) - .5, stuck = /unstuck/.test(w.w), dir = v < 0 ? -1 : 1;
@@ -205,9 +206,9 @@ function stemStar(k, cx, cy, sc = 1) {
 }
 add(18.6, 38.85, t => ({ irid: lerp(.4, .95, sm(23, 38, t)), turb: 1.25, swirl: .1, thump: 1.2, field: sm(22.6, 24, t) * .9, ring: sm(22.6, 24, t) * .5 }), ({ k }) => {
   const { W, H, u, t } = E;
-  const size = fit('And so it goes.', E.fw * .66, 13 * u, F.disp, 'italic'), fade = 1 - sm(22.4, 24.6, t);
-  para(1, W / 2, H * .46, { size, fam: F.disp, style: 'italic', k: k * fade, ink: .05 + .3 * (1 - fade) * sm(22.4, 23, t) * (1 - sm(23.8, 24.6, t)), maxW: W });
-  if (t > 22.6) stemStar(k * sm(22.6, 23.6, t), W / 2, H * .46);
+  const size = fit('And so it goes.', E.fw * .66, 13 * u, F.disp, 'italic'), fade = 1 - sm(21.2, 22.6, t);
+  para(1, W / 2, H * .46, { size, fam: F.disp, style: 'italic', rel: 22.2, k: k * fade, ink: .05 + .3 * (1 - fade) * sm(22.4, 23, t) * (1 - sm(23.8, 24.6, t)), maxW: W });
+  if (t > 22.6) specimen(k * sm(22.6, 23.4, t));
   if (t > 26.6 && t < 30) G.once('title', () => G.shape(gText('code-rabbit hugs', 2.7 * u, F.mono, 'bold', W / 2, H * .9, '.4em'), 26000, r => 27.6 + r * .9, 36.4, COL.mint));
   const ta = sm(27, 29, t) * (1 - sm(35.5, 37.8, t));
   if (ta > 0) { font(O, 2.7 * u, F.mono, 'bold'); O.textAlign = 'center'; O.fillStyle = COL.paper; O.globalAlpha = ta * k; if ('letterSpacing' in O) O.letterSpacing = '.4em';
@@ -244,7 +245,7 @@ function wall(k, fall) { const { W, H, u } = E, fs = 1.55 * u;
   WALL.rows.forEach((r, j) => { const f = Math.max(0, fall - hash(j * 3.1) * .5), y = y0 + j * lh + f * f * H * 1.4; O.globalAlpha = k * .3 * (1 - clamp(f)); O.save(); O.translate(W / 2, y); O.scale(1 - clamp(f * 1.2) * .8, 1); O.fillText(r, -W * .47, 0); O.restore(); });
   O.globalAlpha = 1; }
 const spc = document.createElement('canvas'), spx = spc.getContext('2d');
-add(53.25, 68.7, t => t < cues[8].a ? { decay: .9, inject: .25, turb: .4, irid: .5, block: t > cues[7].a ? 1 : 0, thump: 1.5 } : t < cues[9].a ? { decay: .962, inject: .5, irid: .6, turb: .8 } : { block: 1, decay: .95, inject: .5, thump: 1.5, irid: .5 }, ({ k }) => {
+add(53.25, 68.7, t => t < cues[8].a ? { decay: .9, inject: .25, turb: .4, irid: .5, block: t > cues[7].a ? 1 : 0, thump: 1.5 } : t < cues[9].a ? { decay: .962, inject: .5, irid: .6, turb: .8 } : { block: 1, decay: .95, inject: .5, thump: 1.5, irid: .9, prism: 2.6 }, ({ k }) => {
   const { W, H, u, t } = E;
   seq(6, 6, (i, lk) => { // a syllogism that does not follow
     const ws = wordsOf(6), size = Math.min(6.5 * u, E.fw * .06), ry = [.34, .46, .6], lab = ['P1', 'P2', '∴'], grp = [[ws[0]], [ws[1]], ws.slice(2)], x = W / 2 - Math.min(W * .42, 30 * u);
@@ -296,7 +297,7 @@ function curlText(i, cx, cy, size, k) {
     c.globalAlpha = 1;
   });
 }
-add(68.7, 83.6, t => t < 79.3 ? { turb: .9, grav: .3, irid: .4, inject: .55, decay: .955, thump: 1.3 } : { grav: 1.3, turb: .35, irid: .65, decay: .982 }, ({ k }) => {
+add(68.7, 83.6, t => t < 79.3 ? { turb: .9, grav: .3, irid: t < cues[11].a ? .9 : .5, inject: .55, decay: .955, thump: 1.3, prism: t < cues[12].a ? 2.6 : .6 } : { grav: 1.3, turb: .35, irid: .65, decay: .982 }, ({ k }) => {
   const { W, H, u, t } = E, size = Math.min(5.4 * u, E.fw * .052);
   tickets(k * (1 - sm(75.2, 76.2, t)), wordT(10, /ghosting/));
   seq(10, 10, (i, lk) => para(i, W / 2, H * .44, { size, fam: F.sans, style: 'bold', k: k * lk, col: w => /Jira|tickets/.test(w.w) ? COL.blue : COL.paper,
@@ -308,9 +309,6 @@ add(68.7, 83.6, t => t < 79.3 ? { turb: .9, grav: .3, irid: .4, inject: .55, dec
       rows.forEach((row, r) => { font(O, fs, IMPACT); const full = row.map(w => w.w.toUpperCase()).join(' '), sc = Math.min(1, W * .92 / O.measureText(full).width); font(O, fs * sc, IMPACT); let x = W / 2 - O.measureText(full).width / 2; const y = r ? H * .84 : H * .15;
         for (const w of row) { const tx = w.w.toUpperCase(), a = clamp((t - w.a) / .06); O.globalAlpha = k * lk * a; O.lineJoin = 'round'; O.lineWidth = fs * sc * .14; O.strokeStyle = '#000'; O.strokeText(tx, x, y); O.fillStyle = '#fff'; O.fillText(tx, x, y);
           G.once('cap' + w.i, () => G.word(tx, fs * sc, IMPACT, '', x, y, w.a, w.b, nextA(12) + .1, '#ffffff')); x += O.measureText(tx + ' ').width; } }); O.globalAlpha = 1; }
-    { const si = lower(E.SNARES, t + 1e-6), plate = ['#1 HUSTLER', 'MOST SYNERGY', 'EMPLOYEE OF THE SPRINT', '10× ENGINEER', 'BEST STAND-UP ATTENDANCE', 'PARTICIPANT', 'ROCKSTAR NINJA'][si % 7], bs = Math.min(30 * u, H * .34) * (1 + .12 * E.kick);
-      O.save(); O.translate(W / 2, H * .47); O.rotate(Math.sin(t * 5) * .07 + (si % 2 ? .05 : -.05)); O.globalAlpha = k * lk * sm(0, .12, t - cues[12].a); O.font = `${bs}px serif`; O.textAlign = 'center'; O.textBaseline = 'middle'; O.fillText('🏆', 0, 0);
-      font(O, 2.1 * u, F.mono, 'bold'); O.textAlign = 'center'; const tw = O.measureText(plate).width + 3 * u; O.fillStyle = '#d2a94a'; O.fillRect(-tw / 2, bs * .5, tw, 3.6 * u); O.fillStyle = '#231a05'; O.fillText(plate, 0, bs * .5 + 1.9 * u); O.restore(); O.textAlign = 'left'; }
     const c = cues[12], dur = wordsOf(12).end - c.a, ts = wordT(12, /slaughter/), s = 5.5 * u;
     for (let j = 0; j < 10; j++) {
       const a = t - (c.a + j * dur / 12); if (a < 0) continue;
@@ -324,6 +322,10 @@ add(68.7, 83.6, t => t < 79.3 ? { turb: .9, grav: .3, irid: .4, inject: .55, dec
     const wave = c => { c.beginPath(); c.moveTo(0, H); for (let x = 0; x <= W; x += W / 40) c.lineTo(x, lvl + Math.sin(x / W * 9 + t * 1.6) * u * .8 + Math.sin(x / W * 23 - t) * u * .3); c.lineTo(W, H); c.closePath(); };
     wave(O); O.fillStyle = rgba(50, 110, 200, .24 * kk); O.fill(); O.strokeStyle = rgba(170, 210, 255, .5 * kk); O.lineWidth = 1; O.stroke();
     wave(I); I.fillStyle = rgba(30, 80, 220, .03 * kk); I.fill();
+    { const td = wordT(13, /daughter/), ag = t - td; if (ag >= 0) { const sz = fit('daughter-self', W * .95, H * .4, F.disp, 'italic'), pop = 1 + .25 * Math.exp(-ag * 12), yb = lvl - sz * .42;
+        G.once('dself', () => G.shape(gText('daughter-self', sz, F.disp, 'italic', W / 2, yb), 60000, r => td + r * .05, nextA(13), COL.paper));
+        E.both((c, ink) => { font(c, sz, F.disp, 'italic'); c.textAlign = 'center'; c.save(); c.translate(W / 2, yb); c.scale(pop, pop); c.globalAlpha = kk * (ink ? .5 * Math.exp(-ag * 6) : 1); c.fillStyle = '#fff'; c.fillText('daughter-self', 0, 0); c.restore();
+          if (!ink) { c.save(); c.translate(W / 2 + Math.sin(t * 2) * u, lvl + sz * .5); c.scale(pop, -.8); c.globalAlpha = kk * .34; c.fillStyle = '#9fd0ff'; c.fillText('daughter-self', 0, 0); c.restore(); } c.textAlign = 'left'; c.globalAlpha = 1; }); } }
     font(O, 1.5 * u, F.mono); O.fillStyle = COL.blue; O.globalAlpha = kk * q; O.fillText('D₂O', W * .9, lvl - 2 * u); O.globalAlpha = 1;
     const cy = H * .34;
     para(i, W / 2, cy, { size, k: kk, wf: (w, c, age, ink, by) => {
@@ -406,6 +408,7 @@ function chorus(base, k, big) {
   if (wrapQ > 0) E.both((c, ink) => { font(c, lh * 6.5, F.disp); c.textAlign = 'center'; c.fillStyle = COL.amber; c.globalAlpha = k * wrapQ * (ink ? .06 : .85); const o = (1 - wrapQ) * 12 * u + E.pulse * u;
     c.fillText('{', x0 - 5 * u - o, H / 2 - lh * .62); c.fillText('}', x0 + bw + 5 * u + o, H / 2 - lh * .62); c.textAlign = 'left'; c.globalAlpha = 1; });
   O.globalAlpha = 1;
+  if (t >= cues[base + 4].a && t < cues[base + 5].a) ransom(base + 4, k); else if (t >= cues[base + 6].a && t < cues[base + 7].a) shatter(base + 6, k);
   callRabbits((big ? 84 : 38) * sm(0, 4, t - cues[base].a) * k, ptr.x, ptr.y, big ? 20 : 13, [1, 2, 3, 0, 2, 1, 3, 2][(Math.floor(E.beatN / 8) % 8 + 8) % 8], .3);
   contrib(k, big);
   // grain set-pieces: a heart (or a rabbit) on "hugs", a 42, an asterisk for each "so it goes"
@@ -414,7 +417,7 @@ function chorus(base, k, big) {
     ? G.shape(gText('(\\_/)\n(•.•)\n/ >♥', 15 * u, F.mono, 'bold', W / 2, H / 2), 70000, r => th - .25 + r * .3, th + 1.5, COL.pink)
     : ['🫀', '🧠', '🫁', '👁️', '🦷', '🫀'].forEach((em, j) => G.shape(gText(em, Math.min(46 * u, H * .5), 'serif', '', W / 2, H * .5), 42000, r => th - .05 + j * .21 + r * .05, th + .16 + j * .21 + (j === 5 ? 1 : 0), null)));
   if (t > t42 - 1) G.once('42' + base, () => G.shape(gText('42', 44 * u, F.mono, 'bold', W / 2, H * .5), 42000, r => t42 + r * .2, t42 + 1.05, COL.red));
-  [0, 3].forEach(j => { if (t > w3[j].a - 1) G.once('sig' + base + j, () => G.shape(c => { c.lineWidth = 2.2 * u; c.lineCap = 'round'; c.translate(W * (j ? .72 : .28), H / 2); c.rotate(j); c.beginPath(); for (let q = 0; q < 4; q++) { const g = q * PI / 4, r = 20 * u; c.moveTo(-Math.cos(g) * r, -Math.sin(g) * r); c.lineTo(Math.cos(g) * r, Math.sin(g) * r); } c.stroke(); }, 30000, r => w3[j].a + r * .08, w3[j].a + .55, COL.amber)); });
+
 }
 add(92.2, 122.7, t => ({ fluoro: .9, irid: .35, turb: .7, inject: .3, decay: .95, thump: 1.5, field: 1.1, ring: .8, block: (Math.floor(E.beatN / 4) % 4 + 4) % 4 === 3 ? 1 : 0 }), ({ k }) => chorus(16, k, false));
 
@@ -446,8 +449,8 @@ function pixelText(i, cx, cy, maxW, col, k) {
   for (const w of L) if (E.t >= w.a) pxx.fillText(w.w, Math.round(pxc.width / 2 + w.x), Math.round(pxc.height / 2 + w.y));
   E.both((c, ink) => { c.imageSmoothingEnabled = false; c.globalAlpha = k * (ink ? .06 : 1); c.drawImage(pxc, Math.round(cx - pxc.width * sc / 2), Math.round(cy - pxc.height * sc / 2), pxc.width * sc, pxc.height * sc); c.imageSmoothingEnabled = true; c.globalAlpha = 1; });
 }
-add(127.7, 139.5, { irid: .5, turb: .6, decay: .95, inject: .4, block: 1, thump: 1.2 }, ({ k }) => {
-  const { W, H, u, t } = E; beads(k, 1);
+add(127.7, 139.5, { irid: .4, turb: .4, decay: .9, inject: .2, thump: 1.2, prism: 2.4, field: .5 }, ({ k, p }) => {
+  const { W, H, u, t } = E; beads(k, 1, 28 * (p * 2 + p * p * p * 14));
   seq(26, 27, (i, lk) => { band(H / 2, H * .3, k * lk * .7); pixelText(i, W / 2, H / 2, Math.min(W * .8, E.fw * .66), ['#fff7a8', '#7dffc8', '#ffffff', '#ff9ad8', '#9fd0ff'][(Math.floor(t / (BEAT / 4)) % 5 + 5) % 5], k * lk); });
   seq(28, 29, (i, lk) => { if (lk <= 0) return; // question above, answer below, both large
     const ws = wordsOf(i), cut = ws.findIndex(w => w.w === '—'), Q = ws.slice(0, cut), A = ws.slice(cut + 1), strip = s => s.replace(/[“”]/g, '');
@@ -467,12 +470,12 @@ const band = (y, h, a) => { O.globalAlpha = a; O.fillStyle = '#05050a'; O.fillRe
 add(139.5, 154.0, t => ({ blush: sm(cues[32].a - .2, cues[32].a + 1.6, t) * (1 - sm(152.6, 154, t)) * .95, irid: .45, inject: .6, decay: .96, thump: 1.2 }), ({ k }) => {
   const { W, H, u, t } = E, size = Math.min(5.2 * u, E.fw * .05);
   font(O, 1.5 * u, F.mono); O.textAlign = 'center'; O.fillStyle = COL.dim; O.globalAlpha = k * .8; O.fillText('pull request #42  ·  review requested', W / 2, H * .12); O.textAlign = 'left'; O.globalAlpha = 1;
-  seq(30, 30, (i, lk) => { // triple-entendre: three readings snap into one, large
-    const sz = Math.min(7.6 * u, E.fw * .072), q = cprog(30), rad = ((1 - sm(.05, .55, q)) * 1.6 + .1) * u, o = { size: sz, maxW: W * .9, lh: 1.15 }; band(H * .44, sz * 3.2, k * lk * .6);
-    O.save(); O.globalCompositeOperation = 'screen';
-    ['#ff3b6b', '#35f0a8', '#5b7bff'].forEach((col, j) => { const g = t * 1.3 + j * TAU / 3; words(O, i, W / 2 + Math.cos(g) * rad, H * .44 + Math.sin(g) * rad, { ...o, col, k: k * lk }); });
-    O.restore(); words(O, i, W / 2, H * .44, { ...o, col: '#ffffff', k: k * lk * sm(.3, .6, q), grains: false }); words(I, i, W / 2, H * .44, { ...o, col: COL.violet, k: k * lk });
-  });
+  seq(30, 30, (i, lk) => { if (lk <= 0) return; // intertitles
+    const ws = wordsOf(30), rows = [[ws[0]], [ws[1]], ws.slice(2)], GOD = '"Futura","Avenir Next Condensed","Helvetica Neue",Arial,sans-serif', tri = ['#2a45ff', '#ffffff', '#ff2020'], rh = H * .25;
+    O.globalAlpha = k * lk; O.fillStyle = '#000'; O.fillRect(0, 0, W, H);
+    rows.forEach((row, r) => { const txt = row.map(w => w.w.toUpperCase()).join(' '), sz = Math.min(rh * .92, fit(txt, W * .92, 9999, GOD, 'bold')); font(O, sz, GOD, 'bold'); let x = W / 2 - O.measureText(txt).width / 2;
+      for (const w of row) { const tx = w.w.toUpperCase(); if (t >= w.a) { O.globalAlpha = k * lk; O.fillStyle = tri[(w.i + r + Math.floor(E.beatN / 2)) % 3]; O.fillText(tx, x, H * .14 + (r + .5) * rh); } x += O.measureText(tx + ' ').width; } });
+    O.globalAlpha = 1; });
   if (t >= cues[31].a - .3 && t < cues[33].a + .3) { // the queue, a big bunny, and an emoji that cannot decide which organ it is
     const kk = k * sm(-.3, 0, t - cues[31].a) * (1 - sm(0, .3, t - cues[33].a)), y = H * .7, q = cprog(31), px = j => W / 2 + (j - 3) * 13 * u;
     for (let j = 0; j < 7; j++) { O.globalAlpha = kk * (j === 3 ? 1 : .5); rr(O, px(j) - 5 * u, y - 2 * u, 10 * u, 4 * u, 2 * u); O.strokeStyle = j === 3 ? COL.pink : COL.dim; O.lineWidth = 1.2; O.stroke();
@@ -496,6 +499,11 @@ add(139.5, 154.0, t => ({ blush: sm(cues[32].a - .2, cues[32].a + 1.6, t) * (1 -
       const x = lerp(W * (.05 + .9 * (j + .5) / 20), W / 2 + (j - 9.5) * .9 * u, qj), y = lerp(y0 - lift - hit, H * .56, qj), s = lerp(1 + syn * .7, .32, qj) * (1 + Math.exp(-ap * 10) * .8);
       if (qj < 1) { O.globalAlpha = kk * .5 * (1 - qj); O.fillStyle = `hsl(${40 + j * 7 + keys * 90} 90% 60%)`; O.fillRect(x - .12 * u, y0 + 2.4 * u - (lift + hit) * .0, .24 * u, -(lift + hit + .5 * u)); }
       E.both((c, ink) => { font(c, 3.3 * u * s, F.disp, 'bold'); c.textAlign = 'center'; c.fillStyle = `hsl(${40 + j * 7 + keys * 90} 95% ${58 + 30 * syn}%)`; c.globalAlpha = kk * (ink ? .25 * ((j % 2 ? E.snap : E.kick) + syn * .4) : 1); c.fillText(r, x, y - (qj < 1 ? 3 * u : 0)); c.textAlign = 'left'; c.globalAlpha = 1; }); });
+    { const qm = clamp((t - tt - .15) / (nextA(33) - tt - .15)); if (qm > 0) { O.textAlign = 'center'; O.textBaseline = 'middle';
+        for (let j = 0; j < 190; j++) { const sj = hash(j * 3.7) * .55, qj = sm(sj, sj + .3, qm); if (qj <= 0) continue; const ring = 1 + (j % 6), per = ring * 6, g = (Math.floor(j / 6) % per) / per * TAU + t * (ring % 2 ? .9 : -.9), rad = ring * 6.2 * u * (1 + .1 * E.main);
+          const sx = hash(j * 1.3) * W, sy = hash(j * 9.1) * H, x = lerp(sx, W / 2 + Math.cos(g) * rad, qj), y = lerp(sy, H / 2 + Math.sin(g) * rad, qj);
+          O.globalAlpha = kk * sm(0, .1, qj); O.font = `${(2.2 + ring * .45) * u * (1 + .3 * E.main * (j % 2))}px serif`; O.save(); O.translate(x, y); O.rotate(g + PI / 2); O.fillText(j % 3 ? '👜' : '🛍️', 0, 0); O.restore(); }
+        O.textAlign = 'left'; O.globalAlpha = 1; } }
     if (q > .6) { font(O, 2 * u, F.mono, 'bold'); O.textAlign = 'center'; O.fillStyle = COL.amber; O.globalAlpha = kk * sm(.6, 1, q); O.fillText('[ ' + ' '.repeat(22) + ' ]  XX c. stowed', W / 2 + 6 * u, H * .56 + (E.kick - .5) * u); O.textAlign = 'left'; O.globalAlpha = 1; }
   });
 });
@@ -525,13 +533,16 @@ function beadsStep(mode, k, q) {
     if (mode === 'wind' && B.x[j] > W + 2 * u) B.x[j] = -2 * u;
     if (mode === 'rise' && B.y[j] < -2 * u) B.y[j] = H + u;
     const led = mode === 'rack' || mode === 'fall' ? (h < .16 ? (hash(j + Math.floor(t * 5)) > .4 ? COL.green : '#113') : h > .93 ? COL.red : null) : null;
-    O.globalAlpha = k * .92; O.fillStyle = led || '#f4f4f0'; O.beginPath(); O.arc(B.x[j], B.y[j], r, 0, TAU); O.fill();
+    let dxp = B.x[j], dyp = B.y[j], rs = r, colr = led || '#f4f4f0';
+    if (B.spin) { const cx = W / 2, cy = H * .74, X = B.x[j] - cx, Y = B.y[j] - cy, z = X * Math.sin(B.spin), pers = 1 / (1 - z / (W * 1.3)); dxp = cx + X * Math.cos(B.spin) * pers * B.scale; dyp = cy + Y * pers * B.scale; rs = r * pers * B.scale; if (!led) colr = `hsl(${((B.hue + z * .2) % 360 + 360) % 360} 88% ${60 + 22 * E.main}%)`; }
+    O.globalAlpha = k * .92; O.fillStyle = colr; O.beginPath(); O.arc(dxp, dyp, rs, 0, TAU); O.fill();
     if (j % 4 === 0) { I.globalAlpha = k * .1; I.fillStyle = led || '#dfe8ff'; I.fillRect(B.x[j] - r, B.y[j] - r, r * 2, r * 2); }
   }
   O.globalAlpha = I.globalAlpha = 1;
 }
 add(154.0, 164.75, t => ({ turb: .9, irid: .3, decay: .95, inject: .3, thump: 1.3, grav: t > wordT(35, /catacomb/) && t < cues[36].a ? 1.4 : t >= wordT(36, /salvation/) ? -1.6 : 0 }), ({ k }) => {
   const { W, H, u, t } = E, size = Math.min(4.8 * u, E.fw * .046), tc = wordT(35, /catacomb/);
+  B.spin = t < tc ? (t - cues[34].a) * 1.7 + E.main * .15 : 0; B.scale = 1 + .75 * sm(cues[34].a, tc, t) + .1 * E.main; B.hue = t * 140;
   beadsStep(t < cues[35].a ? 'build' : t < tc ? 'rack' : t < cues[36].a ? 'fall' : 'rise', k, cprog(34));
   seq(34, 34, (i, lk) => para(i, W / 2, H * .28, { size, fam: F.disp, k: k * lk, col: w => /styrofoam/.test(w.w) ? '#fff' : COL.paper }));
   seq(35, 35, (i, lk) => para(i, W / 2, H * .28, { size: size * .78, fam: F.mono, k: k * lk, col: w => /busted/.test(w.w) ? COL.red : /catacomb/.test(w.w) ? COL.dim : COL.green }));
@@ -539,7 +550,7 @@ add(154.0, 164.75, t => ({ turb: .9, irid: .3, decay: .95, inject: .3, thump: 1.
     wf: (w, c, age, ink) => { const sal = /salvation/.test(w.w); c.fillText(w.w, 0, sal ? -age * 1.2 * u : 0);
       if (!ink && !sal && age > .45) { c.strokeStyle = COL.red; c.lineWidth = size * .11; c.beginPath(); c.moveTo(-size * .1, 0); c.lineTo((w.wd + size * .1) * clamp((age - .45) / .2), -size * .08); c.stroke(); } } }));
 });
-add(164.75, 172.9, { shear: 1.7, turb: .5, irid: .5, decay: .976 }, ({ k }) => {
+add(164.75, 172.9, t => ({ shear: t < wordT(37, /through/) ? 1.7 : .3, turb: .5, irid: .5, decay: .97, prism: 1.6, flip: t >= wordT(37, /through/) && t < wordT(37, /^the/) ? 1 : 0 }), ({ k }) => {
   const { W, H, u, t } = E, t0 = 164.75, hy = H * .58, off = t * 1.3, gw = W * .14;
   E.both((c, ink) => { c.globalAlpha = k * (ink ? .035 : .26); c.strokeStyle = COL.mint; c.lineWidth = 1; c.beginPath();
     for (let j = -16; j <= 16; j++) { const f = j + (off % 1); c.moveTo(W / 2 + f * gw * .1, hy); c.lineTo(W / 2 + f * gw, H); }
@@ -547,7 +558,9 @@ add(164.75, 172.9, { shear: 1.7, turb: .5, irid: .5, decay: .976 }, ({ k }) => {
   beadsStep('wind', k * .8);
   const size = Math.min(6 * u, E.fw * .055), xo = Math.sin((t - t0) * .9) * 7 * u + (E.beat < .5 ? 0 : 1.3 * u);
   seq(37, 37, (i, lk) => para(i, W / 2 + xo, H * .36, { size, fam: F.sans, style: 'bold', k: k * lk, col: w => /simulation/.test(w.w) ? COL.mint : COL.paper,
-    wf: (w, c) => { if (/simulation/.test(w.w)) font(c, size * .9, F.mono, 'bold'); c.fillText(w.w, 0, ((w.i + E.beatN) % 2 ? -1 : 1) * Math.abs(Math.sin(E.beat * PI)) * 1.1 * u); } }));
+    wf: (w, c, age, ink) => { if (/simulation/.test(w.w)) font(c, size * .9, F.mono, 'bold'); const bob = ((w.i + E.beatN) % 2 ? -1 : 1) * Math.abs(Math.sin(E.beat * PI)) * 1.1 * u; c.fillText(w.w, 0, bob);
+      if (!ink && t >= wordT(37, /soft-shell/)) { const n = Math.max(2, Math.round(w.wd / (size * .45))), s16 = Math.floor(t / (BEAT / 4)); c.strokeStyle = c.fillStyle; c.lineWidth = size * .07; c.lineCap = 'round'; c.beginPath();
+        for (let q = 0; q < n; q++) { const lx = (q + .5) * w.wd / n, up = (q + s16) % 2, kx = (up ? 1 : -1) * size * .16, ly = size * (up ? .34 : .5); c.moveTo(lx, bob + size * .42); c.lineTo(lx + kx, bob + size * .42 + ly * .55); c.lineTo(lx + kx * 2.2, bob + size * .42 + ly); } c.stroke(); } } }));
   const cx = W * (.1 + .8 * clamp((t - t0) / 8)) + (E.beat < .5 ? 0 : 1.5 * u), cy = H * .78 - Math.abs(Math.sin(E.beat * TAU)) * u;
   O.font = `${6 * u}px serif`; O.textAlign = 'center'; O.textBaseline = 'middle'; O.globalAlpha = k;
   for (let j = 0; j < 9; j++) { const jx = W * (.1 + .1 * j) + ((E.beatN + j) % 2 ? 1 : -1) * (E.beat < .5 ? 1.6 : -1.6) * u + Math.sin((t - t0) * .9) * 4 * u, jy = H * .8 - Math.abs(Math.sin((E.beat + (j % 2) * .5) * PI)) * 2.2 * u * (.4 + E.kick); O.fillText('🦀', jx, jy); }
@@ -597,7 +610,11 @@ add(172.9, 189.0, { glitch: .85, turb: .35, irid: .25, decay: .955, dim: .3, blo
   if (t > cues[40].a) { const q = sm(cues[40].a, wordT(40, /un-merged/), t), pc = Math.min(99, Math.floor(q * 99)), bw = Math.min(46 * u, W * .7), bx = W / 2 - bw / 2, by = H * .7, stuck = pc >= 99;
     O.globalAlpha = k; O.strokeStyle = COL.dim; O.lineWidth = 1.2; rr(O, bx, by, bw, 2.2 * u, 1.1 * u); O.stroke(); O.fillStyle = stuck ? COL.amber : COL.mint; rr(O, bx + .3 * u, by + .3 * u, (bw - .6 * u) * pc / 100 - (stuck ? Math.abs(Math.sin(t * 9)) * u * .5 : 0), 1.6 * u, .8 * u); O.fill();
     font(O, 1.5 * u, F.mono); O.fillStyle = stuck ? COL.amber : COL.dim; O.fillText(`Merging feature/hug into main… ${pc}%` + (stuck && E.beat < .5 ? ' ▮' : ''), bx, by + 4.4 * u); O.globalAlpha = 1; }
-  seq(40, 40, (i, lk) => { glitchText(i, W / 2, H * .34, size, k * lk);
+  seq(40, 40, (i, lk) => { { const ws = wordsOf(40), cut = ws.findIndex(w => /bug/.test(w.w)) + 1, tB = ws[cut].a, hq = t >= tB;
+      [[ws.slice(0, cut), H * .28, '#c9643a'], [ws.slice(cut), H * .42, '#dc143c']].forEach(([row, y, col], r) => { const txt = row.map(w => w.w.toUpperCase()).join(' '), sz = Math.min(size * 1.25, fit(txt, W * .92, 999, F.mono, 'bold'));
+        E.both((c, ink) => { font(c, sz, F.mono, 'bold'); let x = W / 2 - c.measureText(txt).width / 2;
+          for (const w of row) { const tx = w.w.toUpperCase(), age = t - w.a; if (age >= 0) { c.globalAlpha = k * lk * (ink ? .1 : r === 0 && hq ? .6 : 1); c.fillStyle = col; c.fillText(tx, x + (ink ? 0 : (hash(w.i + Math.floor(t * 11)) - .5) * E.A.hi * sz * .25), y - Math.exp(-age * 10) * sz * .2); } x += c.measureText(tx + ' ').width; } c.globalAlpha = 1; }); });
+      I.globalAlpha = .06 * k * lk; I.fillStyle = hq ? '#dc143c' : '#c9643a'; I.fillRect(0, 0, W, H); I.globalAlpha = 1; }
     const a = sm(0, .4, t - wordT(40, /bot/)) * k * lk; if (a > 0) { const y = H * .58, hug = sm(0, 1.2, t - wordT(40, /bug/));
       bunny(O, W / 2 - lerp(8, 2.6, hug) * u, y, 2.4 * u, 0, a); O.font = `${4 * u}px serif`; O.textAlign = 'center'; O.textBaseline = 'middle'; O.globalAlpha = a; O.fillText('🐛', W / 2 + lerp(8, 2.6, hug) * u, y);
       if (hug > .9) { font(O, 2.4 * u, F.sans); O.textAlign = 'center'; O.fillStyle = COL.pink; O.fillText('♥', W / 2, y - (5 + E.pulse) * u); } O.textAlign = 'left'; O.globalAlpha = 1; } });
@@ -629,7 +646,7 @@ add(233.7, 255.5, t => t < 243.8 ? { turb: .3, irid: .3, decay: .955, dim: .2, f
   if (t > tL - 1 && t < tL + .5) G.once('lgtm', () => { const size = fit('LGTM', E.fw * .46, 22 * u, F.mono, 'bold');
     G.shape(c => { c.translate(W / 2, H * .5); c.rotate(-.05); font(c, size, F.mono, 'bold'); c.textAlign = 'center'; const tw = c.measureText('LGTM').width; c.fillText('LGTM', 0, 0); c.lineWidth = size * .05; rr(c, -tw / 2 - size * .25, -size * .68, tw + size * .5, size * 1.36, size * .14); c.stroke(); },
       G.N * G.N, r => tL - .03 + r * .08, 243.82, COL.green); });
-  if (t > 251.6) G.once('last', () => G.shape(c => { c.lineWidth = .5 * u; c.lineCap = 'round'; c.translate(W / 2, H / 2); c.beginPath(); for (let q = 0; q < 4; q++) { const g = q * PI / 4, r = 2 * u; c.moveTo(-Math.cos(g) * r, -Math.sin(g) * r); c.lineTo(Math.cos(g) * r, Math.sin(g) * r); } c.stroke(); }, 50000, r => 252.5 + r * .6, 254.5, COL.paper));
+  if (t > 251.6) G.once('last', () => G.shape(gText('so it goes.', 3.4 * u, F.serif, 'italic', W / 2, H / 2), 40000, r => 252.5 + r * .6, 254.5, COL.paper));
   if (t >= c50 && kk > 0) {
     const noA = sm(0, .15, t - c50) * (1 - sm(1.8, 2.6, t - c50));
     font(O, 5 * u, F.serif, 'italic'); O.textAlign = 'center'; O.fillStyle = COL.paper; O.globalAlpha = kk * noA; O.fillText('No—', W / 2, H * .3); O.textAlign = 'left';
@@ -645,17 +662,65 @@ add(233.7, 255.5, t => t < 243.8 ? { turb: .3, irid: .3, decay: .955, dim: .2, f
   }
   if (big && kk > 0) { spiral(kk, 1.3); beads(kk, .7); stars(kk * .8, 0, false);
     const n = E.beatN, col = PAL[((n % 5) + 5) % 5]; aster(I, (.1 + .8 * hash(n * 1.9)) * W, (.1 + .8 * hash(n * 4.3)) * H, (5 + 9 * hash(n * 7.1)) * u, n, col, u, kk * .6 * (1 - E.beat)); }
-  const fa = sm(252.6, 253.3, t); if (fa > 0) aster(O, W / 2, H / 2, 1.6 * u, T * .3, COL.paper, .28 * u, fa * .8);
+
 });
 
+
+// ---------- type specimen: the title re-set in a different typographic voice on every beat
+const SPEC = [[F.disp, 'italic', 1, 0], [F.mono, 'bold', .55, .35], [IMPACT, '', 1, 0], [F.serif, '', .8, .04], [F.sans, 'bold', 1, -.02], [F.mono, '', .4, .8], [F.disp, '', 1, 0]];
+function specimen(k) {
+  const { W, H, u, t } = E, bn = E.beatN, st = E.A.rms > .3 ? bn * 2 + (E.beat >= .5 ? 1 : 0) : bn, ph = E.A.rms > .3 ? (E.beat * 2) % 1 : E.beat, m = ((st % 7) + 7) % 7, [fam, style, scl, ls] = SPEC[m];
+  let txt = ['code-rabbit', 'hugs', 'so it goes', 'code-rabbit hugs', 'LGTM', 'listen:'][((Math.floor(bn / 2) % 6) + 6) % 6]; if (st % 3 === 0) txt = txt.toUpperCase();
+  const size = Math.min(H * .46, fit(txt, W * .88 * scl / (1 + ls * 1.2), 9999, fam, style)) * (.85 + .3 * E.stem.bass), vert = m === 5, y = H * [.3, .5, .66][((st % 3) + 3) % 3], pop = 1 + .12 * Math.exp(-ph * BEAT * 14);
+  E.both((c, ink) => { c.save(); c.translate(W / 2, vert ? H / 2 : y); if (vert) c.rotate(-PI / 2); c.scale(pop, pop); font(c, size, fam, style); c.textAlign = 'center'; if (ls && 'letterSpacing' in c) c.letterSpacing = ls + 'em';
+    c.globalAlpha = k * (ink ? .1 * (1 - ph) : .95); const col = m % 2 ? PAL[((st % 5) + 5) % 5] : COL.paper;
+    if (st % 4 === 1 && !ink) { c.strokeStyle = col; c.lineWidth = Math.max(1, size * .018); c.strokeText(txt, 0, 0); } else { c.fillStyle = col; c.fillText(txt, 0, 0); }
+    if ('letterSpacing' in c) c.letterSpacing = '0px'; c.restore(); });
+  font(O, 1.3 * u, F.mono); O.fillStyle = COL.dim; O.globalAlpha = k * .8; O.fillText(`${['Didot Italic', 'Mono Bold', 'Impact', 'Serif', 'Grotesk Bold', 'Mono Tracked', 'Didot'][m]} — ${Math.round(size)}px`, 3 * u, H - 4 * u); O.globalAlpha = 1;
+}
+
+// ---------- chorus line 5 as a ransom note: cut-out letters, lopsided, corroding, glossed, with tiny letterforms crawling on them
+const veil = a => { O.globalAlpha = a; O.fillStyle = '#05050a'; O.fillRect(0, 0, E.W, E.H); O.globalAlpha = 1; };
+function ransom(i, k) { const { W, H, u, t } = E, ws = wordsOf(i), rows = [[ws[0]], [ws[1]], ws.slice(2)], bh = H * .66 / 3; veil(k * .82);
+  rows.forEach((row, r) => { const n = row.map(w => w.w).join(' ').length, cw = Math.min(W * .92 / n, bh * .8), x0 = W / 2 - n * cw / 2; let ci = 0;
+    for (const w of row) { const age = t - w.a;
+      for (const ch of [...w.w]) { const id = i * 100 + r * 37 + ci, x = x0 + (ci + .5) * cw, y = H * .17 + (r + .5) * bh + (hash(id * 2.3) - .5) * bh * .16; ci++; if (age < 0) continue;
+        const pop = Math.exp(-age * 10), rot = (hash(id * 1.7) - .5) * .36 + (hash(id + E.beatN) - .5) * .14 * E.main, fam = [IMPACT, F.disp, F.mono, F.serif, F.sans][Math.floor(hash(id * 3.1) * 5)];
+        const bg = ['#f3efe6', '#111111', '#ff3b6b', '#ffe14a', '#7dffc8', '#2f7cf6', '#f3efe6'][Math.floor(hash(id * 5.3) * 7)], fg = bg === '#111111' || bg === '#2f7cf6' || bg === '#ff3b6b' ? '#fff' : '#111';
+        const sc = (1 + pop * .5) * (1 + .09 * E.main * (id % 2 ? 1 : -1)), wb = cw * (.86 + .3 * hash(id * 7.7)), hb = bh * (.62 + .25 * hash(id * 9.1)), ab = .35 * u * (1 + 2.5 * E.main);
+        O.save(); O.translate(x, y); O.rotate(rot); O.scale(sc, sc); O.globalAlpha = k;
+        O.fillStyle = 'rgba(255,46,95,.75)'; O.fillRect(-wb / 2 - ab, -hb / 2, wb, hb); O.fillStyle = 'rgba(46,230,255,.75)'; O.fillRect(-wb / 2 + ab, -hb / 2, wb, hb);
+        O.fillStyle = bg; O.fillRect(-wb / 2, -hb / 2, wb, hb);
+        O.fillStyle = '#05050a'; for (let q = 0; q < 3; q++) { const a_ = hash(id * 11 + q) * TAU; O.beginPath(); O.arc(Math.cos(a_) * wb * .52, Math.sin(a_) * hb * .52, hb * .08 * (1 + hash(id + q) + age * .25), 0, TAU); O.fill(); }
+        const gp = ((t * .6 + hash(id)) % 1), g = O.createLinearGradient(-wb / 2, -hb / 2, wb / 2, hb / 2); g.addColorStop(Math.max(0, gp - .15), 'rgba(255,255,255,0)'); g.addColorStop(gp, 'rgba(255,255,255,.55)'); g.addColorStop(Math.min(1, gp + .15), 'rgba(255,255,255,0)'); O.fillStyle = g; O.fillRect(-wb / 2, -hb / 2, wb, hb);
+        font(O, hb * .82, fam, fam === F.disp ? 'italic' : 'bold'); O.textAlign = 'center'; O.fillStyle = fg; O.fillText(hash(id * 13) > .5 ? ch.toUpperCase() : ch, 0, hb * .04);
+        font(O, hb * .09, F.mono); O.textAlign = 'center'; O.fillStyle = fg; O.globalAlpha = k * .75; for (let q = 0; q < 4; q++) { const cx = ((t * .25 * (q % 2 ? 1 : -1) + hash(id + q * 3)) % 1 + 1) % 1; O.fillText('abcdefghijklmnopqrstuvwxyz'[(id + q * 7 + Math.floor(t * 4)) % 26], (cx - .5) * wb * .9, (hash(id * 4 + q) - .5) * hb * .8); }
+        O.restore(); }
+      ci++; } });
+  O.textAlign = 'left'; O.globalAlpha = 1; }
+// ---------- chorus line 7: "bro-ken com-mit", skewed, each syllable knocking the word into shards
+function shatter(i, k) { const { W, H, u, t } = E, ws = wordsOf(i), bi = ws.findIndex(w => /broken/.test(w.w)); veil(k * .84);
+  font(O, 2.6 * u, F.mono); O.textAlign = 'center'; const lead = ws.slice(0, bi).filter(w => t >= w.a).map(w => w.w).join(' '); O.fillStyle = '#8fb89a'; O.globalAlpha = k; O.fillText('// ' + lead, W / 2, H * .14); O.textAlign = 'left';
+  [[ws[bi], 'BRO', 'KEN', H * .4], [ws[bi + 1], 'COM', 'MIT', H * .7]].forEach(([w, s1, s2, y], r) => { if (!w || t < w.a) return; const t2 = w.a + Math.min(.26, (w.b - w.a) * .5), txt = s1 + s2, size = Math.min(H * .27, fit(txt, W * .82, 9999, IMPACT));
+    const age2 = t - t2, brk = age2 > 0 ? 1 - Math.exp(-age2 * 14) : 0, hit = Math.exp(-(t - w.a) * 12) + (age2 > 0 ? Math.exp(-age2 * 12) : 0), N = 9; font(O, size, IMPACT); const tw = O.measureText(txt).width, w1 = O.measureText(s1).width, x0 = W / 2 - tw / 2, sw = tw / N;
+    for (let j = 0; j < N; j++) { const id = r * 20 + j, dx = (j - 4) * u * 1.3 * brk + (hash(id + E.beatN) - .5) * 3 * u * E.main * brk, dy = (hash(id * 3.7) - .5) * 9 * u * brk, rot = (hash(id * 5.1) - .5) * .3 * brk;
+      O.save(); O.transform(1, 0, -.22, 1, 0, 0); O.translate(x0 + (j + .5) * sw + dx + y * .22, y + dy); O.rotate(rot); O.scale(1 + hit * .12, 1 + hit * .12);
+      O.beginPath(); O.moveTo(-sw / 2 - size * .08, -size * .7); O.lineTo(sw / 2 + size * .05, -size * .7); O.lineTo(sw / 2 - size * .08, size * .7); O.lineTo(-sw / 2 + size * .05, size * .7); O.closePath(); O.clip();
+      if (age2 < 0) { O.beginPath(); O.rect(-(j + .5) * sw - size, -size, w1 + size, size * 2); O.clip(); }
+      font(O, size, IMPACT); O.globalAlpha = k; O.fillStyle = '#2ee6ff'; O.fillText(txt, -(j + .5) * sw + .5 * u * (1 + 3 * hit), 0); O.fillStyle = '#ff2e5f'; O.fillText(txt, -(j + .5) * sw - .5 * u * (1 + 3 * hit), 0); O.fillStyle = '#fff'; O.fillText(txt, -(j + .5) * sw, 0); O.restore(); }
+    I.globalAlpha = .5 * hit * k; I.fillStyle = r ? '#ff2e5f' : '#2ee6ff'; I.fillRect(0, y - size * .6, W, size * 1.2); I.globalAlpha = 1; });
+  O.globalAlpha = 1; }
+
+// ---------- the trophy rides on top of the popup heap: hue-cycling, pulsing, overflowing with foam
+const trophyTop = () => { const { W, H, u, t } = E, a = cues[12].a, b = cues[13].a; if (t < a || t > b + .2) return;
+  const al = sm(a, a + .12, t) * (1 - sm(b - .1, b + .2, t)), si = lower(E.SNARES, t + 1e-6), plate = ['#1 HUSTLER', 'MOST SYNERGY', 'EMPLOYEE OF THE SPRINT', '10× ENGINEER', 'BEST STAND-UP ATTENDANCE', 'PARTICIPANT', 'ROCKSTAR NINJA'][si % 7], bs = Math.min(30 * u, H * .34) * (1 + .16 * E.main);
+  O.save(); O.translate(W / 2, H * .47); O.rotate(Math.sin(t * 5) * .07 + (si % 2 ? .05 : -.05)); O.globalAlpha = al;
+  if ('filter' in O) O.filter = `hue-rotate(${Math.round(t * 260 + si * 47) % 360}deg) saturate(1.8)`; O.font = `${bs}px serif`; O.textAlign = 'center'; O.textBaseline = 'middle'; O.fillText('🏆', 0, 0); if ('filter' in O) O.filter = 'none';
+  for (let j = 0; j < 46; j++) { const ph = ((t * (1 + .6 * hash(j)) + hash(j * 3.3)) % 1), side = j % 2 ? 1 : -1, x = side * bs * (.08 + .3 * hash(j * 5.1) + ph * .28) + Math.sin(t * 6 + j) * u * .5, y = -bs * .34 + ph * ph * bs * 1.05 - (1 - ph) * hash(j * 2.2) * bs * .12, r = (1 - ph * .7) * (1 + 1.6 * hash(j * 7.9)) * u * (1 + .5 * E.main);
+    O.globalAlpha = al * (1 - ph) * .95; O.fillStyle = '#fff'; O.beginPath(); O.arc(x, y, r, 0, TAU); O.fill(); O.strokeStyle = 'rgba(160,200,255,.6)'; O.lineWidth = .12 * u; O.stroke(); }
+  O.globalAlpha = al; font(O, 2.1 * u, F.mono, 'bold'); O.textAlign = 'center'; const tw = O.measureText(plate).width + 3 * u; O.fillStyle = '#d2a94a'; O.fillRect(-tw / 2, bs * .5, tw, 3.6 * u); O.fillStyle = '#231a05'; O.fillText(plate, 0, bs * .5 + 1.9 * u); O.restore(); O.textAlign = 'left'; O.globalAlpha = 1; };
+
 // ============================================================ always-on layers
-const SIG = [wordT(1, /so/), wordsOf(19)[0].a, wordsOf(19)[3].a, wordsOf(44)[0].a, wordsOf(44)[3].a];
-E.post.push(() => { // every "so it goes" leaves an asterisk
-  const { W, H, u, t } = E; if (t > 252) return;
-  SIG.forEach((ts, j) => { const d = t - ts; if (d < 0) return;
-    aster(O, W - (3 + j * 2.6) * u, 3.2 * u, .8 * u, j, COL.paper, .16 * u, .55);
-    if (d < 1.2) { const x = W * (.3 + .4 * hash(j * 3.1)), y = H * (.25 + .5 * hash(j * 5.9)); aster(O, x, y, (4 + d * 26) * u, d * 1.5, COL.amber, .4 * u, (1 - d / 1.2) * .9); aster(I, x, y, (4 + d * 26) * u, d * 1.5, COL.amber, 1.2 * u, (1 - d / 1.2) * .6); } });
-});
 E.post.push(rabbitsStep);
 E.post.push(() => { const { W, H, t } = E; O.fillStyle = 'rgba(243,239,230,.22)'; O.fillRect(0, H - 1.5, W * t / E.S.dur, 1.5); });
 
@@ -682,7 +747,7 @@ function sched() {
     if (b === 41) put(c_(b + 4), c_(b + 5), 'vap');
     put(c_(b + 5), c_(b + 6), 'vhs', 1, .05); put(c_(b + 6), c_(b + 7), 'half');
   }
-  put(c_(24), c_(25), 'crt', .6); put(c_(26), c_(28), 'lcd', .5); put(c_(28), c_(30), 'half', .4); put(c_(30), c_(31), 'vap', .5);
+  put(c_(24), c_(25), 'crt', .6); put(c_(26), c_(28), 'lcd', .22); put(c_(28), c_(30), 'half', .4);
   put(c_(35), wAt(35, /catacomb/), 'crt');
   ['boss', 'clock', 'KPI'].forEach(w => { const a = wAt(36, new RegExp(w)); put(a, a + .28, 'fry', 1, 0); });
   put(c_(37), wAt(37, /simulation/), 'vap', 1, .15); put(wAt(37, /simulation/), c_(38), 'ascii', .8, .05);
@@ -699,6 +764,7 @@ E.lookFn = (t, L) => {
   if (t > c_(41) && t < tail && sAge < .12) L[ORDER[(bn * 3 + si) % NO]] = 1;
   if (t >= tail && t < 233.6) L[ORDER[t > 228 ? (bn * 2 + Math.floor(E.beat * 2)) % NO : bn]] = 1;      // hyperspeed: a register per beat, then per half-beat
   if (t > 243.85 && t < 252.1) { L[ORDER[bn]] = 1; if (E.kick > .8) L.inv = 1; }
+  if (t >= c_(30) && t < c_(31) && E.beat < .16) L.inv = 1;   // the intertitle inverts on the beat
   if (inBleed(t)) { L.fry = 1; L.vhs = 1; L.pix = Math.max(L.pix, E.beat > .5 ? .28 : 0); if (E.kick > .8) L.inv = 1; }
 };
 
@@ -759,11 +825,13 @@ E.post.push(() => { const { W, H, u, t } = E; STK = STK || stickers();
   O.textAlign = 'left'; O.globalAlpha = 1; });
 
 // ---------- flocks of virtual cursors: when nobody is steering, other pointers dance the piece
-const FLOCK = [[23.2, 38.6, 9, 'ring'], [68.7, 75.6, 12, 'chase'], [122.7, 127.6, 8, 'line'], [139.5, 149, 10, 'ring'], [164.75, 172.5, 14, 'line'], [189, 233, 22, 'mix'], [243.85, 252, 30, 'burst']];
+const FLOCK = [[23.2, 38.6, 9, 'ring', ['arrow']], [38.85, 53.2, 7, 'line', ['+']], [68.7, 75.6, 12, 'chase', ['arrow', '👆']], [83.6, 87.8, 12, 'burst', ['$', '+']], [92.2, 107, 10, 'line', ['>']], [114.4, 118.95, 42, 'burst', ['arrow', '>', '+', '💥', '🐇', '👆', '✖']],
+  [122.7, 127.6, 8, 'line', ['+', '−']], [139.5, 149, 10, 'ring', ['👆']], [165.3, 170.45, 20, 'crab', ['arrow', '>']], [189, 211.3, 22, 'mix', ['arrow', '>', '+']], [211.3, 215.75, 50, 'burst', ['arrow', '>', '+', '💥', '🐇', '👆', '✖']], [215.75, 233, 26, 'mix', ['arrow', '>', '+', '⌛']], [243.85, 252, 34, 'burst', ['arrow', '>', '+', '👆', '🐇']]];
 function arrow(c, x, y, s, rot, a, fill) { c.save(); c.translate(x, y); c.rotate(rot); c.scale(s, s); c.globalAlpha = a; c.beginPath(); c.moveTo(0, 0); c.lineTo(0, 16); c.lineTo(4.2, 12.4); c.lineTo(7, 19); c.lineTo(9.6, 17.9); c.lineTo(6.8, 11.5); c.lineTo(12, 11.5); c.closePath(); c.fillStyle = fill; c.fill(); c.lineWidth = 1.2; c.strokeStyle = '#000'; c.stroke(); c.restore(); }
 const CUR = [];
-E.post.push(() => { const { W, H, u, t, dt } = E; let want = 0, mode = 'ring';
-  for (const [a, b, n, m] of FLOCK) if (t >= a && t < b) { want = Math.round(n * sm(a, a + 1.2, t) * (1 - sm(b - .8, b, t))); mode = m; }
+E.post.push(() => { const { W, H, u, t, dt } = E; let want = 0, mode = 'ring', icons = ['arrow'];
+  for (const [a, b, n, m, ic] of FLOCK) if (t >= a && t < b) { want = Math.round(n * (.55 + .9 * E.A.rms) * sm(a, a + .6, t) * (1 - sm(b - .5, b, t))); mode = m; icons = ic; }
+  const tThe = wordT(37, /^the/), spd = 14 + 30 * E.A.rms + 14 * E.main;
   if (mode === 'mix') mode = ['ring', 'line', 'chase', 'burst'][(Math.floor(E.beatN / 8) % 4 + 4) % 4];
   while (CUR.length < want) CUR.push({ x: hash(CUR.length * 3.1) * W, y: H + 20, vx: 0, vy: 0 });
   const bar = Math.floor(E.beatN / 4), stp = E.beatN + sm(0, .3, E.beat), n = Math.max(1, want);
@@ -771,11 +839,16 @@ E.post.push(() => { const { W, H, u, t, dt } = E; let want = 0, mode = 'ring';
     if (!live) { tx = c.x; ty = H + 40; }
     else if (mode === 'ring') { const g = j / n * TAU + stp * PI / 8 * (bar % 2 ? 1 : -1), r = (22 + 8 * Math.sin(stp * PI / 2 + j)) * u; tx = W / 2 + Math.cos(g) * r; ty = H / 2 + Math.sin(g) * r * .8; }
     else if (mode === 'line') { const q = (j + .5) / n; tx = W * (.08 + .84 * q) + ((E.beatN % 2 ? 1 : -1) * 2.5 * u); ty = H * .5 + Math.sin(q * TAU * 1.5 + stp * PI / 2) * H * .22; }
+    else if (mode === 'crab') { if (t < tThe) { const q = (j + .5) / n; tx = W * (.08 + .84 * q) + (E.beat < .5 ? 3 : -3) * u; ty = H * .62 + (j % 2 ? 1 : -1) * Math.abs(Math.sin(E.beat * PI)) * 2 * u; }
+      else if (t < 169.25) { const g = j / n * TAU, sq = sm(tThe + .5, tThe + 1.1, t), rr_ = lerp(4, 13, sq) * u; tx = W / 2 + Math.cos(g) * rr_ * 2.2; ty = H * .36 + Math.sin(g) * rr_ * .6; }
+      else { const g = j / n * TAU; tx = W / 2 + Math.cos(g) * W; ty = H / 2 + Math.sin(g) * H; } }
     else if (mode === 'chase') { const g = stp * .7 + j * .35; tx = W * (.5 + .38 * Math.sin(g * 1.3)); ty = H * (.5 + .34 * Math.sin(g * 1.7 + 1)); }
     else { const g = j * 2.39996 + bar, r = (10 + 42 * ((stp * .5 + hash(j)) % 1)) * u; tx = W / 2 + Math.cos(g) * r; ty = H / 2 + Math.sin(g) * r * .8; }
-    c.vx += ((tx - c.x) * 26 - c.vx * 7) * dt; c.vy += ((ty - c.y) * 26 - c.vy * 7) * dt; c.x += c.vx * dt; c.y += c.vy * dt;
+    c.vx += ((tx - c.x) * spd - c.vx * 7) * dt; c.vy += ((ty - c.y) * spd - c.vy * 7) * dt; c.x += c.vx * dt; c.y += c.vy * dt;
     if (!live && c.y > H + 30) return;
-    arrow(O, c.x, c.y, .16 * u, Math.atan2(c.vy, c.vx) * .12, 1, '#fff');
+    const ic = icons[(j + (icons.length > 4 ? E.beatN + Math.floor(E.beat * 2) : 0)) % icons.length], pull = 1 + .35 * E.main;
+    if (ic === 'arrow') arrow(O, c.x, c.y, .16 * u * pull, Math.atan2(c.vy, c.vx) * .12, 1, '#fff');
+    else { O.save(); O.translate(c.x, c.y); O.scale(pull, pull); O.textAlign = 'center'; O.textBaseline = 'middle'; O.font = ic.length > 1 || ic.charCodeAt(0) > 255 ? `${3.4 * u}px serif` : `bold ${3.6 * u}px ${F.mono}`; if (ic.charCodeAt(0) < 256 || ic === '−' || ic === '✖') { O.lineWidth = .7 * u; O.strokeStyle = '#000'; O.lineJoin = 'round'; O.strokeText(ic, 0, 0); O.fillStyle = '#fff'; } O.fillText(ic, 0, 0); O.restore(); O.textAlign = 'left'; }
     I.globalAlpha = .12 + .4 * E.snap; I.fillStyle = PAL[j % 5]; I.beginPath(); I.arc(c.x, c.y, (.6 + 1.6 * E.snap) * u, 0, TAU); I.fill(); I.globalAlpha = 1;
     if (E.snap > .55 && (j + E.beatN) % 3 === 0) { O.globalAlpha = E.snap; O.strokeStyle = COL.paper; O.lineWidth = .2 * u; O.beginPath(); O.arc(c.x, c.y, (1 - E.snap) * 9 * u + u, 0, TAU); O.stroke(); O.globalAlpha = 1; } });
   while (CUR.length > want && CUR[CUR.length - 1].y > H + 30) CUR.pop();
@@ -783,7 +856,7 @@ E.post.push(() => { const { W, H, u, t, dt } = E; let want = 0, mode = 'ring';
 });
 
 // ---------- full-bleed bursts: for a bar or two the sung word IS the screen, deep-fried and falling apart
-const BLEED = [[90.25, 92.15], [106.3, 107.25], [120.8, 122.65], [136.0, 137.7], [152.9, 154.0], [203, 204.0], [218.4, 221.4], [230, 233.6], [248.1, 252]];
+const BLEED = [[90.25, 92.15], [120.8, 122.65], [136.0, 137.7], [203, 204.0], [218.4, 221.4], [230, 233.6], [248.1, 252]];
 const inBleed = t => BLEED.some(([a, b]) => t >= a && t < b);
 const nowWord = t => { const i = cueAt(t); if (i < 0) return 'LISTEN'; const ws = wordsOf(i); let w = null; for (const x of ws) if (x.a <= t) w = x; return w && t < ws.end + .5 ? w.w : ['HUG', 'LGTM', 'SO IT GOES', '🐇', 'BIT', 'BY', 'BIT'][((E.beatN % 7) + 7) % 7]; };
 E.post.push(() => { const { W, H, u, t } = E; if (!inBleed(t)) return;
@@ -796,11 +869,12 @@ E.post.push(() => { const { W, H, u, t } = E; if (!inBleed(t)) return;
   I.globalAlpha = .5 * E.kick; I.fillStyle = PAL[st % 5]; I.fillRect(0, 0, W, H); I.globalAlpha = 1; O.textAlign = 'left'; O.globalAlpha = 1; });
 
 // ---------- pop-up storms: every drum hit in these windows opens another window
-const STORM = [[75.66, 79.3, .85], [103.4, 107.2, .45], [118.9, 122.7, .8], [142.8, 146.5, .25], [160.9, 164.7, .6], [192.8, 221, .7], [221, 233.6, 1], [243.85, 252, 1]];
+const STORM = [[wordT(11, /corporate/) - .05, 75.66, 1, { kinds: [4], notes: 1, y: [.08, .7] }], [75.66, 79.3, .85, { kinds: [0, 1, 2, 0, 4], x: [.18, .5], y: [.2, .5] }], [103.4, 106.2, .45], [118.9, 122.7, .8], [142.8, 146.5, .25], [160.9, 164.7, .45, { y: [.6, .8], kinds: [0, 1] }], [192.8, 221, .7], [221, 233.6, 1], [243.85, 252, 1]];
 const WIN = [['hugs.exe', 'A hug is waiting to be installed.', ['Later', 'Hug now']], ['Time', 'You have been logged out of linear time.', ['OK']], ['Linter', 'Your heart is out of scope.', ['Ignore', 'Ignore all']],
   ['Update', 'Rabbit 42.0 is ready. Restart reality?', ['Tonight', 'Never']], ['Jira', 'HUG-101 was assigned to you. And you. And you.', ['Shirk']], ['Storage', 'Tote-bag is 97% full of centuries.', ['Manage']],
   ['Survey', 'Rate this fatal error  ★★★★★', ['Submit']], ['Calendar', 'Stand-up has been moved to forever.', ['Decline']], ['Merge', 'This branch has no conflicts with the void.', ['Stay un-merged']],
   ['Bokonon', 'Harmless untruth detected.', ['Believe']], ['Trophy', 'You won! (Everyone won.)', ['Claim plastic']], ['KPI', 'KPI not found. Feeling: found.', ['Nice']]];
+const ADS = [['GrindCo™', 'Buy 1 grind, get 1 free', 'Shop now'], ['Synergy+', 'Hand-up season is here', 'Learn more'], ['Hustl', 'Your burnout, delivered', 'Get the app'], ['KPI Cola', 'Zero calories. Zero KPIs.', 'Sip'], ['BrandBrand', 'A brand for your brand', 'Brand it'], ['Trophy Depot', 'Plastic, in bulk', 'Claim'], ['Stand-Up Pro', 'Meetings about meetings', 'Upgrade']];
 const CHAT = ['u up?', 'lgtm', 'nit: the universe', 'so it goes', 'pls rebase', '🐇🐇🐇', 'who made the void', 'it’s open-source', 'poo-tee-weet?', 'ship it', 'works on my timeline', '+1'];
 const CAP = ['🐇', '🚌', '🦀', '🏆', '🐇', '🚦', '🧊', '🐇', '🪐'];
 function popup(kind, id, x, y, u, a, sc) { O.save(); O.translate(x, y); O.scale(sc, sc); O.globalAlpha = a; O.textBaseline = 'middle';
@@ -812,16 +886,20 @@ function popup(kind, id, x, y, u, a, sc) { O.save(); O.translate(x, y); O.scale(
   else if (kind === 1) { const msg = CHAT[id % CHAT.length], mine = id % 2; font(O, 2 * u, F.sans); const w = O.measureText(msg).width + 3.2 * u, h = 4.4 * u; rr(O, 0, 0, w, h, 2.2 * u); O.fillStyle = mine ? '#2f7cf6' : '#2c2c34'; O.fill(); O.fillStyle = '#fff'; O.fillText(msg, 1.6 * u, h / 2); }
   else if (kind === 2) { const w = 21 * u, h = 26 * u; rr(O, 0, 0, w, h, u); O.fillStyle = '#f7f7f9'; O.fill(); O.fillStyle = '#2f7cf6'; O.fillRect(0, 0, w, 5.4 * u); font(O, 1.35 * u, F.sans, 'bold'); O.fillStyle = '#fff'; O.fillText('Select all squares with', 1.2 * u, 1.8 * u); font(O, 1.9 * u, F.sans, 'bold'); O.fillText('rabbits', 1.2 * u, 3.9 * u);
     for (let q = 0; q < 9; q++) { const cx = 1.2 * u + (q % 3) * 6.3 * u, cy = 6.4 * u + Math.floor(q / 3) * 6.3 * u, em = CAP[(q + id) % 9], hit = em === '🐇' && hash(id + q + Math.floor(E.t * 3)) > .4; O.fillStyle = hit ? '#bfe0ff' : '#e3e4ea'; O.fillRect(cx, cy, 5.9 * u, 5.9 * u); O.font = `${4 * u}px serif`; O.textAlign = 'center'; O.fillText(em, cx + 2.95 * u, cy + 3.1 * u); O.textAlign = 'left'; } }
-  else { const w = Math.min(E.W * .9, 70 * u), h = 7 * u; rr(O, 0, 0, w, h, u); O.fillStyle = 'rgba(16,18,26,.97)'; O.fill(); O.strokeStyle = 'rgba(255,255,255,.25)'; O.lineWidth = 1; O.stroke(); font(O, 1.6 * u, F.sans); O.fillStyle = '#eee'; O.fillText(['🍪 We use cookies to smuggle a whole cosmos.', '🍪 This site would like to know your location in time.', '🍪 Your consent was accepted before you gave it.'][id % 3], 2 * u, h / 2);
+  else if (kind === 4) { const [br, tag, cta] = ADS[id % ADS.length], w = 30 * u, h = 13 * u, hue = (id * 67) % 360, g = O.createLinearGradient(0, 0, w, h); g.addColorStop(0, `hsl(${hue} 90% 55%)`); g.addColorStop(1, `hsl(${(hue + 70) % 360} 95% 45%)`);
+    rr(O, 0, 0, w, h, u); O.fillStyle = g; O.fill(); O.fillStyle = '#ffe14a'; O.fillRect(u, u, 3.6 * u, 2 * u); font(O, 1.2 * u, F.sans, 'bold'); O.fillStyle = '#111'; O.fillText('Ad', 1.9 * u, 2.05 * u); O.fillStyle = 'rgba(255,255,255,.8)'; O.textAlign = 'right'; O.fillText('Skip ▸ ' + (5 - Math.floor(E.t * 2) % 5), w - u, 2 * u); O.textAlign = 'left';
+    font(O, 3.1 * u, IMPACT); O.fillStyle = '#fff'; O.fillText(br, 1.4 * u, 5.6 * u); font(O, 1.5 * u, F.sans, 'bold'); O.fillText(tag, 1.4 * u, 8.3 * u); rr(O, 1.4 * u, 9.6 * u, 10 * u, 2.4 * u, 1.2 * u); O.fillStyle = '#fff'; O.fill(); O.fillStyle = '#111'; font(O, 1.3 * u, F.sans, 'bold'); O.textAlign = 'center'; O.fillText(cta, 6.4 * u, 10.85 * u); O.textAlign = 'left'; }
+  else { const w = Math.min(E.W * .7, 54 * u), h = 7 * u; rr(O, 0, 0, w, h, u); O.fillStyle = 'rgba(16,18,26,.97)'; O.fill(); O.strokeStyle = 'rgba(255,255,255,.25)'; O.lineWidth = 1; O.stroke(); font(O, 1.6 * u, F.sans); O.fillStyle = '#eee'; O.fillText(['🍪 Cookies smuggle a cosmos.', '🍪 Share your location in time?', '🍪 Consent accepted in advance.'][id % 3], 2 * u, h / 2);
     ['Accept all', 'Accept more'].forEach((b, j) => { const bw = 11 * u, bx = w - (2 - j) * (bw + u); rr(O, bx, 1.6 * u, bw, 3.8 * u, .6 * u); O.fillStyle = j ? COL.mint : '#3a3d4a'; O.fill(); O.fillStyle = j ? '#06120c' : '#fff'; font(O, 1.5 * u, F.sans, 'bold'); O.textAlign = 'center'; O.fillText(b, bx + bw / 2, 3.5 * u); O.textAlign = 'left'; }); }
   O.restore(); O.globalAlpha = 1; }
 E.post.push(() => { const { W, H, u, t } = E, live = 1.7; let pr = 0; for (const [a, b, p] of STORM) if (t >= a - .01 && t < b + live) pr = Math.max(pr, p); if (!pr) return;
-  const ev = []; for (const [L, salt] of [[E.SNARES, 0], [E.KICKS, 500]]) for (let j = lower(L, t - live); j < L.length && L[j] <= t; j++) ev.push([L[j], j + salt]);
+  const ev = []; for (const [L, salt] of [[E.SNARES, 0], [E.KICKS, 500], [E.NOTES, 1000]]) for (let j = lower(L, t - live); j < L.length && L[j] <= t; j++) ev.push([L[j], j + salt]);
   ev.sort((x, y) => x[0] - y[0]);
-  for (const [te, id] of ev) { if (!STORM.some(([a, b, p]) => te >= a && te < b && hash(id * 7.7) < p)) continue;
-    const age = t - te, d = 1 + .7 * hash(id * 2.9); if (age > d) continue; const r = hash(id * 5.3), kind = r < .5 ? 0 : r < .78 ? 1 : r < .9 ? 2 : 3;
-    const sc = (1 + .55 * Math.exp(-age * 18) - (age > d - .08 ? (age - d + .08) / .08 * .5 : 0)) * (.8 + .5 * hash(id * 1.7)), x = kind === 3 ? W * .05 : W * (.04 + .62 * hash(id * 3.1)), y = kind === 3 ? H * (.78 + .08 * hash(id)) : H * (.08 + .64 * hash(id * 8.3));
-    popup(kind, id, x + (hash(id) - .5) * E.kick * 2 * u, y - E.kick * u * (id % 2 ? 1 : -1), u, age > d - .08 ? 1 - (age - d + .08) / .08 : 1, sc); } });
+  for (const [te, id] of ev) { const win = STORM.find(([a, b, p, o]) => te >= a && te < b && hash(id * 7.7) < p && (id < 1000 || (o && o.notes))); if (!win) continue; const o = win[3] || {};
+    const age = t - te, d = 1 + .7 * hash(id * 2.9); if (age > d) continue; const r = hash(id * 5.3), kind = o.kinds ? o.kinds[Math.floor(r * o.kinds.length)] : r < .46 ? 0 : r < .72 ? 1 : r < .84 ? 2 : r < .92 ? 4 : 3;
+    const xr = o.x || [.04, .66], yr = kind === 3 ? [.5, .6] : o.y || [.08, .72], sc = (1 + .55 * Math.exp(-age * 18) - (age > d - .08 ? (age - d + .08) / .08 * .5 : 0)) * (.8 + .5 * hash(id * 1.7));
+    popup(kind, id, W * lerp(xr[0], xr[1], hash(id * 3.1)) + (hash(id) - .5) * E.kick * 2 * u, H * lerp(yr[0], yr[1], hash(id * 8.3)) - E.kick * u * (id % 2 ? 1 : -1), u, age > d - .08 ? 1 - (age - d + .08) / .08 : 1, sc); } });
 
+E.post.push(trophyTop);
 E.go();
 })();

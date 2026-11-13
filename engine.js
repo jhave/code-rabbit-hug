@@ -30,6 +30,7 @@ const BEAT = 60 / S.bpm;
 const ST = window.STEMS || null, STENV = {};
 if (ST) for (const k in ST.env) STENV[k] = dec(ST.env[k]);
 const stem = (k, t) => { const a = STENV[k]; if (!a) return 0; const i = (t - ST.t0) * ST.fps, j = Math.floor(i); if (j < 0 || j >= a.length - 1) return 0; const f = i - j; return (a[j] * (1 - f) + a[j + 1] * f) / 255; };
+const MAIN = ST ? ST.kicks.filter(h => h[1] >= .8).map(h => h[0]).filter((t, i, a) => !i || t - a[i - 1] > .4) : S.kicks, NOTES = ST && ST.notes ? ST.notes.filter(h => h[1] >= .45).map(h => h[0]) : [];
 const hitT = l => l.map(h => h[0]), KICKS = ST ? hitT(ST.kicks) : S.kicks, SNARES = ST ? hitT(ST.snares) : S.snaps, HATS = ST ? hitT(ST.hats) : S.snaps;
 // seconds since the most recent event in a sorted list (kicks, snaps)
 function since(list, t) { let a = 0, b = list.length - 1, k = -1; while (a <= b) { const m = (a + b) >> 1; if (list[m] <= t) { k = m; a = m + 1; } else b = m - 1; } return k < 0 ? 9 : t - list[k]; }
@@ -153,7 +154,7 @@ void main(){ o=texture(uTex,v+uOff)*uA; }`;
 // the lens: the finished picture (fluid + grains + type) seen through switchable aesthetic registers
 const LENS = `#version 300 es
 precision highp float;
-uniform sampler2D uC,uAtlas; uniform vec2 uRes; uniform float uT,uDpr,uBass,uRing,uRingA;
+uniform sampler2D uC,uAtlas; uniform vec2 uRes; uniform float uT,uDpr,uBass,uRing,uRingA,uPrism,uFlip;
 uniform float mCrt,mAscii,mFry,mTherm,mHalf,mLcd,mKal,mPix,mVap,mInv,mEdge,mXer,mVhs;
 in vec2 v; out vec4 o;
 ${NOISE}
@@ -167,7 +168,9 @@ void main(){
   vec2 uv=p/vec2(asp,1.)+.5;
   if(mVhs>.01){ uv.x+=mVhs*((h1(vec2(floor(v.y*220.),floor(uT*30.)))-.5)*.004+smoothstep(.035,0.,abs(fract(v.y-uT*.23)-.5))*.035); }
   if(mPix>.01){ float n=mix(uRes.y/uDpr,40.,pow(mPix,.3)); vec2 g=vec2(n*asp,n); uv=(floor(uv*g)+.5)/g; }
+  if(uFlip>.5) uv=1.-uv;
   vec3 c=S(uv);
+  if(uPrism>.01){ vec2 d=(uv-.5)*uPrism*.035; c=vec3(S(uv+d).r,c.g,S(uv-d).b); c+=uPrism*.12*(.5+.5*cos(6.2832*(length(uv-.5)*3.-uT*.6+vec3(0.,.33,.67))))*L(c); }
   if(mAscii>.01){ vec2 cs=vec2(9.,16.)*uDpr, fc=uv*uRes, cell=floor(fc/cs); vec3 cc=S((cell+.5)*cs/uRes); float l=clamp(L(cc)*1.6,0.,.999);
     vec2 f=fract(fc/cs); float a=texture(uAtlas,vec2((floor(l*16.)+f.x)/16.,f.y)).r;
     c=mix(c, a*mix(normalize(cc+.03)*1.7,vec3(.45,1.,.7),.3)*(.4+l), mAscii); }
@@ -367,7 +370,7 @@ void main(){ float m=smoothstep(.5,.12,length(gl_PointCoord-.5)); o=vec4(vc.rgb*
 })();
 
 // ---------- params
-const DEF = { swirl: 0, turb: 1, shear: 0, drain: 0, decay: .972, inject: 1, irid: .35, fluoro: 0, blush: 0, glitch: 0, freeze: 0, grav: 0, zoom: 0, dim: 0, block: 0, thump: .6, field: .8, ring: .5 };
+const DEF = { swirl: 0, turb: 1, shear: 0, drain: 0, decay: .972, inject: 1, irid: .35, fluoro: 0, blush: 0, glitch: 0, freeze: 0, grav: 0, zoom: 0, dim: 0, block: 0, thump: .6, field: .8, ring: .5, prism: .6, flip: 0 };
 const P = { ...DEF };
 
 // ---------- lyric timing helpers
@@ -419,12 +422,13 @@ const font = (c, px, fam = F.serif, style = '') => { c.font = `${style} ${px}px 
 // ---------- pointer (autopilots when idle, so nothing ever waits on it)
 const ptr = { x: 0, y: 0, tx: 0, ty: 0, vx: 0, vy: 0, last: -99, auto: true, down: false };
 addEventListener('pointermove', e => { ptr.tx = e.clientX; ptr.ty = e.clientY; ptr.last = performance.now() / 1000; });
-addEventListener('pointerdown', e => { ptr.tx = e.clientX; ptr.ty = e.clientY; ptr.last = performance.now() / 1000; ptr.down = true; start(); });
+addEventListener('pointerdown', e => { ptr.tx = e.clientX; ptr.ty = e.clientY; ptr.last = performance.now() / 1000; ptr.down = true; start(); goFull(); });
 addEventListener('pointerup', () => ptr.down = false);
 
 // ---------- clock
 let started = false, ended = false, clock = 0, slow = 0, lastT = 0, hidden = null;
 const fake = qs.has('fake'), hold = qs.has('hold'), t0 = +qs.get('t') || 0;
+const goFull = () => { if (!fake && !qs.has('nofs') && document.documentElement.requestFullscreen && !document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {}); };
 const teaser = new Audio('listen.m4a'); teaser.volume = .6; teaser.preservesPitch = false; let teaseN = 0;
 function tease() { if (started || fake) return; teaser.currentTime = 0; teaser.playbackRate = [1, .8, 1.15, .92][teaseN++ % 4];
   teaser.play().then(() => { E.teased = performance.now() / 1000; }).catch(() => {}); setTimeout(tease, 3800 + 1700 * (teaseN % 3)); }
@@ -432,7 +436,6 @@ setTimeout(tease, 700);
 function start() {
   if (started && !ended) return;
   clock = ended ? 0 : t0; started = true; ended = false; G.releaseAll(clock + .25); teaser.pause();
-  if (!fake && !qs.has('nofs') && document.documentElement.requestFullscreen && !document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {});
   if (!fake) { audio.currentTime = clock; audio.play().catch(() => { started = false; }); }
 }
 audio.addEventListener('ended', () => { ended = true; });
@@ -445,7 +448,7 @@ addEventListener('keydown', e => {
 // ---------- engine object
 const E = window.E = {
   S, cues, O, I, P, DEF, F, ptr, t: 0, dt: .016, T: 0, W: 0, H: 0, u: 1, fw: 1, started: false, ended: false,
-  A: { lo: 0, mid: 0, hi: 0, rms: 0, flux: 0, bright: 0 }, beat: 0, beatN: 0, pulse: 0, kick: 0, snap: 0, hat: 0, hush: 0, surge: 0, BEAT, KICKS, SNARES, HATS, since, look, LOOKS, lookFn: null, stemAt: stem,
+  A: { lo: 0, mid: 0, hi: 0, rms: 0, flux: 0, bright: 0 }, beat: 0, beatN: 0, pulse: 0, kick: 0, snap: 0, hat: 0, hush: 0, surge: 0, BEAT, KICKS, SNARES, HATS, MAIN, NOTES, note: 0, main: 0, since, look, LOOKS, lookFn: null, stemAt: stem,
   stem: { vox: 0, bv: 0, drums: 0, bass: 0, keys: 0, synth: 0 },
   clamp, lerp, sm, hash, TAU, env, wordsOf, wordT, cprog, charsShown, cueAt, flow, font,
   scenes: [], post: [], gate: null, onresize: null, G,
@@ -464,7 +467,7 @@ function frame(ms, manual) {
   for (const k in E.A) E.A[k] = playing ? env(k, t) : 0;
   const bp = (t - S.beat0) / BEAT; E.beatN = Math.floor(bp); E.beat = bp - E.beatN;
   // real drum hits (not just the grid): kick drives the pulse, snaps flash, hats grain; hush/surge follow the dynamics
-  E.kick = playing ? Math.exp(-since(KICKS, t) * 7) : 0; E.snap = playing ? Math.exp(-since(SNARES, t) * 11) : 0; E.hat = playing ? Math.exp(-since(HATS, t) * 16) : 0;
+  E.kick = playing ? Math.exp(-since(KICKS, t) * 7) : 0; E.snap = playing ? Math.exp(-since(SNARES, t) * 11) : 0; E.hat = playing ? Math.exp(-since(HATS, t) * 16) : 0; E.note = playing ? Math.exp(-since(NOTES, t) * 5) : 0; E.main = playing ? Math.exp(-since(MAIN, t) * 6) : 0;
   for (const k in E.stem) E.stem[k] = playing ? stem(k, t) : 0;
   E.pulse = playing ? Math.max(E.kick * (.4 + .6 * E.A.lo), Math.exp(-E.beat * 4.5) * .3 * E.A.lo) : 0;
   slow += (E.A.rms - slow) * (1 - Math.exp(-dt * .9)); E.hush = playing ? clamp(1 - slow * 2.6) : 0;
@@ -493,7 +496,7 @@ function frame(ms, manual) {
     for (const key in DEF) tgt[key] += k * (key in sp ? sp[key] : DEF[key]); wsum += k;
     O.save(); I.save(); s.draw({ k, t: t - s.a, p: clamp((t - s.a) / (s.b - s.a)) }); O.restore(); I.restore();
   } else if (E.gate) { O.save(); I.save(); E.gate(); O.restore(); I.restore(); }
-  for (const k in DEF) { const g = wsum > 0 ? tgt[k] / wsum : DEF[k]; P[k] += (g - P[k]) * (1 - Math.exp(-dt * (k === 'freeze' ? 7 : 3.2))); }
+  for (const k in DEF) { const g = wsum > 0 ? tgt[k] / wsum : DEF[k]; P[k] += (g - P[k]) * (1 - Math.exp(-dt * (k === 'freeze' ? 7 : k === 'flip' || k === 'block' ? 40 : 3.2))); }
   if (playing) for (const f of E.post) { O.save(); I.save(); f(); O.restore(); I.restore(); }
 
   // sim
@@ -514,7 +517,7 @@ function frame(ms, manual) {
   gl.useProgram(showP.p); gl.bindFramebuffer(gl.FRAMEBUFFER, compFbo); gl.viewport(0, 0, glc.width, glc.height);
   gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tex[cur]); gl.uniform1i(showP.u.uTex, 0);
   const V = showP.u; gl.uniform2f(V.uRes, glc.width, glc.height); gl.uniform1f(V.uT, T);
-  gl.uniform1f(V.uIrid, P.irid * (.75 + .6 * E.stem.keys)); gl.uniform1f(V.uFluoro, P.fluoro); gl.uniform1f(V.uBlush, P.blush); gl.uniform1f(V.uGlitch, P.glitch); gl.uniform1f(V.uDim, P.dim); gl.uniform1f(V.uPulse, E.pulse); gl.uniform1f(V.uSnap, E.snap * (.35 + .65 * E.A.hi)); gl.uniform1f(V.uHat, E.A.hi); gl.uniform1f(V.uBright, E.A.bright); gl.uniform1f(V.uField, P.field); gl.uniform1f(V.uKAge, playing ? since(KICKS, t) : 9); gl.uniform1f(V.uBass, E.stem.bass); gl.uniform1f(V.uKeys, E.stem.keys); gl.uniform1f(V.uTick, E.hat);
+  gl.uniform1f(V.uIrid, P.irid * (.75 + .6 * E.stem.keys)); gl.uniform1f(V.uFluoro, P.fluoro); gl.uniform1f(V.uBlush, P.blush); gl.uniform1f(V.uGlitch, P.glitch); gl.uniform1f(V.uDim, P.dim); gl.uniform1f(V.uPulse, E.pulse); gl.uniform1f(V.uSnap, E.snap * (.35 + .65 * E.A.hi)); gl.uniform1f(V.uHat, E.A.hi); gl.uniform1f(V.uBright, E.A.bright + E.note * 1.5 * P.prism); gl.uniform1f(V.uField, P.field); gl.uniform1f(V.uKAge, playing ? since(MAIN, t) : 9); gl.uniform1f(V.uBass, E.stem.bass); gl.uniform1f(V.uKeys, E.stem.keys); gl.uniform1f(V.uTick, E.hat);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
   if (G.ok) G.draw(compFbo, glc.width, glc.height, 1.55 * dpr, 1);
   gl.useProgram(copyP.p); gl.bindFramebuffer(gl.FRAMEBUFFER, compFbo); gl.viewport(0, 0, glc.width, glc.height);
@@ -525,7 +528,7 @@ function frame(ms, manual) {
   LOOKS.forEach(k => look[k] = 0); if (playing && E.lookFn) E.lookFn(t, look);
   const Q = lensP.u; gl.useProgram(lensP.p); gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, compTex); gl.uniform1i(Q.uC, 0); gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, atlasTex); gl.uniform1i(Q.uAtlas, 1); gl.activeTexture(gl.TEXTURE0);
-  gl.uniform2f(Q.uRes, glc.width, glc.height); gl.uniform1f(Q.uT, T); gl.uniform1f(Q.uDpr, dpr); gl.uniform1f(Q.uBass, E.stem.bass); gl.uniform1f(Q.uRing, playing ? since(KICKS, t) : 9); gl.uniform1f(Q.uRingA, P.ring);
+  gl.uniform2f(Q.uRes, glc.width, glc.height); gl.uniform1f(Q.uT, T); gl.uniform1f(Q.uDpr, dpr); gl.uniform1f(Q.uBass, E.stem.bass); gl.uniform1f(Q.uRing, playing ? since(MAIN, t) : 9); gl.uniform1f(Q.uPrism, P.prism * (E.note + .35 * E.main)); gl.uniform1f(Q.uFlip, P.flip); gl.uniform1f(Q.uRingA, P.ring);
   gl.uniform1f(Q.mCrt, look.crt); gl.uniform1f(Q.mAscii, look.ascii); gl.uniform1f(Q.mFry, look.fry); gl.uniform1f(Q.mTherm, look.therm); gl.uniform1f(Q.mHalf, look.half);
   gl.uniform1f(Q.mLcd, look.lcd); gl.uniform1f(Q.mKal, look.kal); gl.uniform1f(Q.mPix, look.pix); gl.uniform1f(Q.mVap, look.vap); gl.uniform1f(Q.mInv, look.inv); gl.uniform1f(Q.mEdge, look.edge); gl.uniform1f(Q.mXer, look.xerox); gl.uniform1f(Q.mVhs, look.vhs);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
