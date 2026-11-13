@@ -46,12 +46,14 @@ vec2 curl(vec2 p){ float e=.02; return vec2(vn(p+vec2(0,e))-vn(p-vec2(0,e)), vn(
 const SIM = `#version 300 es
 precision highp float;
 uniform sampler2D uPrev, uInk; uniform vec2 uRes; uniform float uT, uK;
-uniform float uSwirl,uTurb,uShear,uDrain,uDecay,uInject,uFreeze,uGrav,uGlitch,uZoom,uFine;
+uniform float uSwirl,uTurb,uShear,uDrain,uDecay,uInject,uFreeze,uGrav,uGlitch,uZoom,uFine,uBlock,uThump,uKick,uSnr,uBeatN;
 uniform vec2 uPtr, uPtrV;
 in vec2 v; out vec4 o;
 ${NOISE}
 void main(){
-  float asp=uRes.x/uRes.y; vec2 p=(v-.5)*vec2(asp,1.);
+  float asp=uRes.x/uRes.y; vec2 vv=v;
+  if(uBlock>.5){ vec2 g=vec2(asp,1.)*13.; vv=(floor(v*g)+.5)/g; } // block substrate: rigid tiles tear instead of melting
+  vec2 p=(vv-.5)*vec2(asp,1.);
   vec2 f=vec2(0.);
   f += (curl(p*1.6+vec2(0.,uT*.04)) + .5*curl(p*4.1-vec2(uT*.07,0.)))*.0016*uTurb;
   f += curl(p*11.+vec2(uT*.3,-uT*.2))*.0007*uFine;
@@ -65,6 +67,8 @@ void main(){
   f += uPtrV*exp(-dot(d,d)*26.);
   float row=floor(v.y*26.);
   if(uGlitch>.01 && h1(vec2(row,floor(uT*9.)))>1.-uGlitch*.22) f.x += (h1(vec2(row,3.))-.5)*.06;
+  f+=p*uKick*.02*uThump; f.x+=uSnr*.012*uThump*sign(sin(p.y*18.+uBeatN*3.1416));
+  if(uBlock>.5) f*=2.6;
   f.x/=asp; f*=uK;
   vec2 px=1./uRes;
   float ice=texture(uPrev,v).a;
@@ -144,7 +148,7 @@ void main(){ o=texture(uTex,v+uOff)*uA; }`;
 const LENS = `#version 300 es
 precision highp float;
 uniform sampler2D uC,uAtlas; uniform vec2 uRes; uniform float uT,uDpr,uBass;
-uniform float mCrt,mAscii,mFry,mTherm,mHalf,mLcd,mKal,mPix,mVap,mInv;
+uniform float mCrt,mAscii,mFry,mTherm,mHalf,mLcd,mKal,mPix,mVap,mInv,mEdge,mXer,mVhs;
 in vec2 v; out vec4 o;
 ${NOISE}
 float L(vec3 c){ return dot(c,vec3(.3,.59,.11)); }
@@ -155,6 +159,7 @@ void main(){
   if(mKal>.5){ float a=atan(p.y,p.x), r=length(p), seg=6.2832/6.; a=mod(a+uT*.05,seg); a=abs(a-seg*.5); p=r*vec2(cos(a),sin(a)); }
   if(mCrt>.01) p*=1.+mCrt*.09*dot(p,p);
   vec2 uv=p/vec2(asp,1.)+.5;
+  if(mVhs>.01){ uv.x+=mVhs*((h1(vec2(floor(v.y*220.),floor(uT*30.)))-.5)*.004+smoothstep(.035,0.,abs(fract(v.y-uT*.23)-.5))*.035); }
   if(mPix>.01){ float n=mix(uRes.y/uDpr,40.,pow(mPix,.3)); vec2 g=vec2(n*asp,n); uv=(floor(uv*g)+.5)/g; }
   vec3 c=S(uv);
   if(mAscii>.01){ vec2 cs=vec2(9.,16.)*uDpr, fc=uv*uRes, cell=floor(fc/cs); vec3 cc=S((cell+.5)*cs/uRes); float l=clamp(L(cc)*1.6,0.,.999);
@@ -176,11 +181,17 @@ void main(){
   if(mCrt>.01){ float sl=.78+.22*sin(v.y*uRes.y/uDpr*3.14159); float m=mod(floor(gl_FragCoord.x/uDpr),3.);
     vec3 g=c*sl*vec3(m==0.?1.15:.9,m==1.?1.15:.9,m==2.?1.15:.9); g=mix(g,vec3(L(g))*vec3(.35,1.,.55)*1.3,.5);
     g*=(1.-.45*dot(p,p))*(.94+.06*sin(uT*110.)); g*=1.-step(1.,max(abs(uv.x-.5),abs(uv.y-.5))*2.); c=mix(c,g,mCrt); }
+  if(mEdge>.01){ vec2 e=1.6/uRes; float gx=L(S(uv+vec2(e.x,0.)))-L(S(uv-vec2(e.x,0.))), gy=L(S(uv+vec2(0.,e.y)))-L(S(uv-vec2(0.,e.y)));
+    float ed=clamp(length(vec2(gx,gy))*7.,0.,1.); c=mix(c, ed*(.55+.45*cos(6.2832*(uT*.12+uv.y*.8+vec3(0.,.33,.67))))*1.7+vec3(0.,.015,.05), mEdge); }
+  if(mXer>.01){ float l=L(c)+(h1(floor(v*uRes/(2.*uDpr)))-.5)*.22; float k=step(.3,l); float sat=max(c.r,max(c.g,c.b))-min(c.r,min(c.g,c.b));
+    vec3 x=mix(vec3(.93,.91,.85),vec3(.07,.06,.09),k); if(k>.5&&sat>.42&&c.r>c.g) x=vec3(.86,.12,.18); c=mix(c,x,mXer); }
+  if(mVhs>.01){ vec3 q=vec3(S(uv+vec2(.0045,0.)).r,c.g,S(uv-vec2(.0045,0.)).b); float l=L(q); q=mix(vec3(l),q,.75)*.92+.05;
+    q+=(h1(v*uRes+fract(uT)*9.)-.5)*.09; q*=.93+.07*sin(v.y*uRes.y/uDpr*1.6); c=mix(c,q,mVhs); }
   c=mix(c,1.-c,mInv);
   o=vec4(c,1.);
 }`;
 const copyP = prog(COPY), lensP = prog(LENS);
-const LOOKS = ['crt', 'ascii', 'fry', 'therm', 'half', 'lcd', 'kal', 'pix', 'vap', 'inv'], look = {}; LOOKS.forEach(k => look[k] = 0);
+const LOOKS = ['crt', 'ascii', 'fry', 'therm', 'half', 'lcd', 'kal', 'pix', 'vap', 'inv', 'edge', 'xerox', 'vhs'], look = {}; LOOKS.forEach(k => look[k] = 0);
 let compTex = null, compFbo = null, ovTex = null, atlasTex = null;
 { // glyph ramp for the ASCII look, light to dense
   const ac = document.createElement('canvas'); ac.width = 16 * 18; ac.height = 32; const ax = ac.getContext('2d'); ax.fillStyle = '#fff'; ax.font = 'bold 26px Menlo,Consolas,monospace'; ax.textAlign = 'center'; ax.textBaseline = 'middle';
@@ -317,7 +328,7 @@ void main(){ float m=smoothstep(.5,.12,length(gl_PointCoord-.5)); o=vec4(vc.rgb*
     },
     // any drawing (in CSS px, white): n grains land on it at `arr`, leave at `rel`
     shape(draw, n, arr, rel, color) {
-      const sc = Math.min(1, 720 / W), w = Math.ceil(W * sc), h = Math.ceil(H * sc); rc.width = w; rc.height = h; rx.setTransform(sc, 0, 0, sc, 0, 0); rx.fillStyle = rx.strokeStyle = '#fff'; draw(rx); rx.setTransform(1, 0, 0, 1, 0, 0);
+      const sc = Math.min(1, 720 / W), w = Math.ceil(W * sc), h = Math.ceil(H * sc); if (w < 4 || h < 4) return; rc.width = w; rc.height = h; rx.setTransform(sc, 0, 0, sc, 0, 0); rx.fillStyle = rx.strokeStyle = '#fff'; draw(rx); rx.setTransform(1, 0, 0, 1, 0, 0);
       const L = lit(w, h); if (!L.length) return; const rgb = rgbOf(color); n = Math.min(n, NN);
       for (let k = 0; k < n; k++) { const px = L[(Math.random() * L.length) | 0]; put((px % w + Math.random()) / sc, (((px / w) | 0) + Math.random()) / sc, typeof arr === 'function' ? arr(Math.random()) : arr, rel, rgb); }
     },
@@ -348,7 +359,7 @@ void main(){ float m=smoothstep(.5,.12,length(gl_PointCoord-.5)); o=vec4(vc.rgb*
 })();
 
 // ---------- params
-const DEF = { swirl: 0, turb: 1, shear: 0, drain: 0, decay: .972, inject: 1, irid: .35, fluoro: 0, blush: 0, glitch: 0, freeze: 0, grav: 0, zoom: 0, dim: 0 };
+const DEF = { swirl: 0, turb: 1, shear: 0, drain: 0, decay: .972, inject: 1, irid: .35, fluoro: 0, blush: 0, glitch: 0, freeze: 0, grav: 0, zoom: 0, dim: 0, block: 0, thump: .6 };
 const P = { ...DEF };
 
 // ---------- lyric timing helpers
@@ -404,7 +415,7 @@ addEventListener('pointerdown', e => { ptr.tx = e.clientX; ptr.ty = e.clientY; p
 addEventListener('pointerup', () => ptr.down = false);
 
 // ---------- clock
-let started = false, ended = false, clock = 0, slow = 0, lastT = 0;
+let started = false, ended = false, clock = 0, slow = 0, lastT = 0, hidden = null;
 const fake = qs.has('fake'), hold = qs.has('hold'), t0 = +qs.get('t') || 0;
 function start() {
   if (started && !ended) return;
@@ -421,7 +432,7 @@ addEventListener('keydown', e => {
 // ---------- engine object
 const E = window.E = {
   S, cues, O, I, P, DEF, F, ptr, t: 0, dt: .016, T: 0, W: 0, H: 0, u: 1, fw: 1, started: false, ended: false,
-  A: { lo: 0, mid: 0, hi: 0, rms: 0, flux: 0, bright: 0 }, beat: 0, beatN: 0, pulse: 0, kick: 0, snap: 0, hat: 0, hush: 0, surge: 0, BEAT, KICKS, SNARES, HATS, since, look, LOOKS, lookFn: null,
+  A: { lo: 0, mid: 0, hi: 0, rms: 0, flux: 0, bright: 0 }, beat: 0, beatN: 0, pulse: 0, kick: 0, snap: 0, hat: 0, hush: 0, surge: 0, BEAT, KICKS, SNARES, HATS, since, look, LOOKS, lookFn: null, stemAt: stem,
   stem: { vox: 0, bv: 0, drums: 0, bass: 0, keys: 0, synth: 0 },
   clamp, lerp, sm, hash, TAU, env, wordsOf, wordT, cprog, charsShown, cueAt, flow, font,
   scenes: [], post: [], gate: null, onresize: null, G,
@@ -448,7 +459,9 @@ function frame(ms, manual) {
 
   // pointer
   ptr.auto = T - ptr.last > 2.5;
-  if (ptr.auto) { ptr.tx = W / 2 + W * .3 * Math.sin(T * .37) + W * .09 * Math.sin(T * 1.13); ptr.ty = H / 2 + H * .28 * Math.sin(T * .29 + 1) + H * .08 * Math.cos(T * .91); }
+  if (ptr.auto !== hidden) { hidden = ptr.auto; document.body.style.cursor = hidden ? 'none' : 'crosshair'; }
+  if (ptr.auto && E.lead) { ptr.tx = E.lead.x; ptr.ty = E.lead.y; }
+  else if (ptr.auto) { ptr.tx = W / 2 + W * .3 * Math.sin(T * .37) + W * .09 * Math.sin(T * 1.13); ptr.ty = H / 2 + H * .28 * Math.sin(T * .29 + 1) + H * .08 * Math.cos(T * .91); }
   const px = ptr.x, py = ptr.y, kk = 1 - Math.exp(-dt * (ptr.auto ? 2.2 : 16));
   ptr.x += (ptr.tx - ptr.x) * kk; ptr.y += (ptr.ty - ptr.y) * kk;
   ptr.vx = lerp(ptr.vx, (ptr.x - px) / dt, .3); ptr.vy = lerp(ptr.vy, (ptr.y - py) / dt, .3);
@@ -479,11 +492,11 @@ function frame(ms, manual) {
   gl.uniform2f(simP.u.uRes, sw, sh_); gl.uniform1f(simP.u.uT, T); gl.uniform1f(simP.u.uK, K);
   const U = simP.u; gl.uniform1f(U.uSwirl, P.swirl); gl.uniform1f(U.uTurb, P.turb * (1 + E.A.mid * .8) * (1 - .5 * E.hush)); gl.uniform1f(U.uFine, (.3 + 1.4 * E.hat + 2.5 * E.stem.synth + 1.2 * E.snap) * (1 - .6 * P.freeze)); gl.uniform1f(U.uShear, P.shear);
   gl.uniform1f(U.uDrain, P.drain); gl.uniform1f(U.uDecay, Math.pow(P.decay, K)); gl.uniform1f(U.uInject, P.inject);
-  gl.uniform1f(U.uFreeze, P.freeze); gl.uniform1f(U.uGrav, P.grav); gl.uniform1f(U.uGlitch, P.glitch); gl.uniform1f(U.uZoom, P.zoom + E.pulse * .25 * (P.zoom > .05 ? 1 : 0) + E.surge * .7);
+  gl.uniform1f(U.uFreeze, P.freeze); gl.uniform1f(U.uGrav, P.grav); gl.uniform1f(U.uGlitch, P.glitch); gl.uniform1f(U.uBlock, P.block); gl.uniform1f(U.uThump, P.thump); gl.uniform1f(U.uKick, Math.pow(E.kick, 3)); gl.uniform1f(U.uSnr, Math.pow(E.snap, 3)); gl.uniform1f(U.uBeatN, E.beatN); gl.uniform1f(U.uZoom, P.zoom + E.pulse * .25 * (P.zoom > .05 ? 1 : 0) + E.surge * .7);
   gl.uniform2f(U.uPtr, ptr.x / W, 1 - ptr.y / H);
   const pv = ptr.auto ? .35 : 1; gl.uniform2f(U.uPtrV, clamp(ptr.vx / H * .012 * pv, -.03, .03), clamp(-ptr.vy / H * .012 * pv, -.03, .03));
   gl.drawArrays(gl.TRIANGLES, 0, 3); cur = nx;
-  if (G.ok) { if (t < lastT - .5) G.rewind(); lastT = t; G.step(T, t, dt); G.draw(fbo[cur], sw, sh_, 1.6, .045); }
+  if (G.ok) { if (t < lastT - .5) G.rewind(); lastT = t; G.step(T, t, dt); G.draw(fbo[cur], sw, sh_, 1.6, .045 * P.inject); }
   // show
   gl.useProgram(showP.p); gl.bindFramebuffer(gl.FRAMEBUFFER, compFbo); gl.viewport(0, 0, glc.width, glc.height);
   gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tex[cur]); gl.uniform1i(showP.u.uTex, 0);
@@ -501,7 +514,7 @@ function frame(ms, manual) {
   gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, compTex); gl.uniform1i(Q.uC, 0); gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, atlasTex); gl.uniform1i(Q.uAtlas, 1); gl.activeTexture(gl.TEXTURE0);
   gl.uniform2f(Q.uRes, glc.width, glc.height); gl.uniform1f(Q.uT, T); gl.uniform1f(Q.uDpr, dpr); gl.uniform1f(Q.uBass, E.stem.bass);
   gl.uniform1f(Q.mCrt, look.crt); gl.uniform1f(Q.mAscii, look.ascii); gl.uniform1f(Q.mFry, look.fry); gl.uniform1f(Q.mTherm, look.therm); gl.uniform1f(Q.mHalf, look.half);
-  gl.uniform1f(Q.mLcd, look.lcd); gl.uniform1f(Q.mKal, look.kal); gl.uniform1f(Q.mPix, look.pix); gl.uniform1f(Q.mVap, look.vap); gl.uniform1f(Q.mInv, look.inv);
+  gl.uniform1f(Q.mLcd, look.lcd); gl.uniform1f(Q.mKal, look.kal); gl.uniform1f(Q.mPix, look.pix); gl.uniform1f(Q.mVap, look.vap); gl.uniform1f(Q.mInv, look.inv); gl.uniform1f(Q.mEdge, look.edge); gl.uniform1f(Q.mXer, look.xerox); gl.uniform1f(Q.mVhs, look.vhs);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
 }
 // ?debug shows time / cue number.  ?tap is a timing tool: play, press J (or any letter) on every sung word,

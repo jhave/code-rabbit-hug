@@ -123,24 +123,27 @@ function stars(k, q, withCurve) { // a whole cosmos, smuggled onto one crooked c
 }
 
 // ---------- rabbits (shared swarm; scenes ask for a number and a place)
-const R = { list: [], want: 0, tx: 0, ty: 0, rad: 13 };
+const R = { list: [], want: 0, tx: 0, ty: 0, rad: 13, form: 0, ink: .34 };
 function rabbitsStep() {
   const { W, H, u, dt, t } = E, N = Math.max(8, R.want), s = 1.45 * u;
   while (R.list.length < R.want) { const n = R.list.length, e = Math.floor(hash(n * 3.3) * 4);
     R.list.push({ n, x: e === 0 ? -6 * u : e === 1 ? W + 6 * u : hash(n) * W, y: e === 2 ? -6 * u : e === 3 ? H + 6 * u : hash(n + .5) * H, vx: 0, vy: 0 }); }
   R.list.forEach((r, idx) => {
     const act = idx < R.want; let tx, ty;
-    if (act) { const g = idx * 2.39996 + t * .22, rad = (4.5 + R.rad * Math.sqrt((idx + .5) / N)) * u; tx = R.tx + Math.cos(g) * rad; ty = R.ty + Math.sin(g) * rad * .8; }
+    if (act && R.form === 1) { const side = idx % 2 ? 1 : -1, col = Math.floor(idx / 2) % 3, row = Math.floor(idx / 6), rows = Math.ceil(N / 6); tx = W / 2 + side * (W * .5 - (2.5 + col * 4.2) * u); ty = H * .12 + (row + .5) * H * .76 / rows; }
+    else if (act && R.form === 2) { const q = ((idx / N + t * .035) % 1 + 1) % 1; tx = W * (.03 + .94 * q); ty = (idx % 2 ? H * .93 : H * .07) + Math.sin(q * 50) * u; }
+    else if (act && R.form === 3) { const a = idx / N * TAU, sc = Math.min(W, H) * .024; tx = W / 2 + 16 * Math.pow(Math.sin(a), 3) * sc; ty = H / 2 - (13 * Math.cos(a) - 5 * Math.cos(2 * a) - 2 * Math.cos(3 * a) - Math.cos(4 * a)) * sc; }
+    else if (act) { const g = idx * 2.39996 + t * .22, rad = (4.5 + R.rad * Math.sqrt((idx + .5) / N)) * u; tx = R.tx + Math.cos(g) * rad; ty = R.ty + Math.sin(g) * rad * .8; }
     else { const g = Math.atan2(r.y - H / 2, r.x - W / 2); tx = W / 2 + Math.cos(g) * (W + H); ty = H / 2 + Math.sin(g) * (W + H); }
     const kS = act ? 7 : .9; r.vx += ((tx - r.x) * kS - r.vx * 3.4) * dt; r.vy += ((ty - r.y) * kS - r.vy * 3.4) * dt; r.x += r.vx * dt; r.y += r.vy * dt;
     r.gone = !act && (r.x < -9 * u || r.x > W + 9 * u || r.y < -9 * u || r.y > H + 9 * u);
     const hop = -(Math.abs(Math.sin((E.beat + hash(r.n) * .5) * PI)) * .7 * (.25 + A.lo) + E.kick * (.6 + hash(r.n * 2.2))) * 1.5 * u;
     bunny(O, r.x, r.y + hop, s, r.n);
-    I.globalAlpha = .34; I.fillStyle = PAL[r.n % 5]; I.beginPath(); I.arc(r.x, r.y + hop, s * .8, 0, TAU); I.fill(); I.globalAlpha = 1;
+    I.globalAlpha = R.ink * (.3 + E.kick); I.fillStyle = PAL[r.n % 5]; I.beginPath(); I.arc(r.x, r.y + hop, s * .8, 0, TAU); I.fill(); I.globalAlpha = 1;
   });
-  R.list = R.list.filter(r => !r.gone); R.want = 0;
+  R.list = R.list.filter(r => !r.gone); R.want = 0; R.form = 0; R.ink = .34;
 }
-const callRabbits = (n, x, y, rad = 13) => { if (n > R.want) { R.want = Math.floor(n); R.tx = x; R.ty = y; R.rad = rad; } };
+const callRabbits = (n, x, y, rad = 13, form = 0, ink = .34) => { if (n > R.want) { R.want = Math.floor(n); R.tx = x; R.ty = y; R.rad = rad; R.form = form; R.ink = ink; } };
 
 // ============================================================ gate
 E.gate = () => {
@@ -181,64 +184,103 @@ add(-1, 18.6, { turb: 1.1, irid: .4 }, ({ k }) => {
 });
 
 // ============================================================ 0:18 and so it goes
-add(18.6, 38.85, t => ({ irid: lerp(.4, .95, sm(23, 38, t)), turb: 1.25, swirl: .18 }), ({ k }) => {
+// one star, not many: six arms, one per stem, each arm as long as that stem is loud right now
+const STEMN = ['vox', 'bv', 'drums', 'bass', 'keys', 'synth'];
+function stemStar(k, cx, cy, sc = 1) {
+  const { u, t } = E, st = E.stem, bar = Math.floor(E.beatN / 4), rot = (E.beatN + sm(0, .22, E.beat)) * PI / 6, form = ((bar % 4) + 4) % 4;
+  E.both((c, ink) => { c.lineCap = form === 2 ? 'butt' : 'round';
+    STEMN.forEach((n, j) => { const lv = n === 'drums' ? Math.max(st[n] * .6, E.kick) : st[n], len = (5 + 36 * lv) * u * sc, g = rot + j * PI / 3;
+      c.strokeStyle = PAL[j % 5]; c.globalAlpha = k * (ink ? .1 * lv : .92); c.lineWidth = (ink ? 1.6 : .3 + 1.4 * lv) * u * sc;
+      if (form === 1 && !ink) c.setLineDash([u * .6, u * 1.1]);
+      c.beginPath(); c.moveTo(cx + Math.cos(g) * 2.5 * u * sc, cy + Math.sin(g) * 2.5 * u * sc); c.lineTo(cx + Math.cos(g) * len, cy + Math.sin(g) * len);
+      if (form === 3) { c.moveTo(cx - Math.cos(g) * 2.5 * u * sc, cy - Math.sin(g) * 2.5 * u * sc); c.lineTo(cx - Math.cos(g) * len * .45, cy - Math.sin(g) * len * .45); }
+      c.stroke(); c.setLineDash([]);
+      if (!ink) { font(c, 1.25 * u, F.mono); c.fillStyle = PAL[j % 5]; c.globalAlpha = k * .7; c.textAlign = 'center'; c.fillText(n, cx + Math.cos(g) * (len + 2.4 * u), cy + Math.sin(g) * (len + 2.4 * u)); c.textAlign = 'left'; } });
+    c.globalAlpha = 1; });
+  const sn = E.SNARES, si = lower(sn, t + 1e-6) - 1; // snares scatter small crosses, hats tick a ring
+  if (si >= 0) { const age = t - sn[si]; if (age < .3) { const x = cx + (hash(si * 2.1) - .5) * 70 * u * sc, y = cy + (hash(si * 5.7) - .5) * 60 * u * sc, r = (1.5 + 2 * hash(si)) * u;
+    O.globalAlpha = k * (1 - age / .3); O.strokeStyle = COL.paper; O.lineWidth = .3 * u; O.beginPath(); O.moveTo(x - r, y); O.lineTo(x + r, y); O.moveTo(x, y - r); O.lineTo(x, y + r); O.stroke(); } }
+  const ht = E.HATS; for (let j = lower(ht, t - .5); j < ht.length && ht[j] <= t; j++) { const age = t - ht[j], g = j * 2.39996, r0 = 44 * u * sc; O.globalAlpha = k * (1 - age / .5) * .8; O.strokeStyle = COL.mint; O.lineWidth = .25 * u; O.beginPath(); O.moveTo(cx + Math.cos(g) * r0, cy + Math.sin(g) * r0); O.lineTo(cx + Math.cos(g) * (r0 + 2.5 * u), cy + Math.sin(g) * (r0 + 2.5 * u)); O.stroke(); }
+  O.globalAlpha = 1;
+}
+add(18.6, 38.85, t => ({ irid: lerp(.4, .95, sm(23, 38, t)), turb: 1.25, swirl: .1, thump: 1.2 }), ({ k }) => {
   const { W, H, u, t } = E;
   const size = fit('And so it goes.', E.fw * .66, 13 * u, F.disp, 'italic'), fade = 1 - sm(22.4, 24.6, t);
   para(1, W / 2, H * .46, { size, fam: F.disp, style: 'italic', k: k * fade, ink: .05 + .3 * (1 - fade) * sm(22.4, 23, t) * (1 - sm(23.8, 24.6, t)), maxW: W });
-  if (t > 22.6) { // one asterisk per beat once the drums arrive
-    const n = E.beatN, x = (.12 + .76 * hash(n * 1.9)) * W, y = (.14 + .72 * hash(n * 4.3)) * H, r = (4 + 9 * hash(n * 7.1)) * u * (.5 + A.lo);
-    aster(O, x, y, r * (1 + E.beat * .4), n * .7 + E.snap * .4, PAL[((n % 5) + 5) % 5], (.35 + .5 * E.kick) * u, k * Math.exp(-E.beat * 3.2) * .9);
-    aster(I, x, y, r, n * .7, PAL[((n % 5) + 5) % 5], .9 * u, k * .55 * (1 - E.beat));
-  }
-  if (t > 26.6 && t < 30) G.once('title', () => G.shape(gText('code-rabbit hugs', 2.7 * u, F.mono, 'bold', W / 2, H * .5, '.4em'), 26000, r => 27.6 + r * .9, 36.4, COL.mint));
+  if (t > 22.6) stemStar(k * sm(22.6, 23.6, t), W / 2, H * .46);
+  if (t > 26.6 && t < 30) G.once('title', () => G.shape(gText('code-rabbit hugs', 2.7 * u, F.mono, 'bold', W / 2, H * .9, '.4em'), 26000, r => 27.6 + r * .9, 36.4, COL.mint));
   const ta = sm(27, 29, t) * (1 - sm(35.5, 37.8, t));
   if (ta > 0) { font(O, 2.7 * u, F.mono, 'bold'); O.textAlign = 'center'; O.fillStyle = COL.paper; O.globalAlpha = ta * k; if ('letterSpacing' in O) O.letterSpacing = '.4em';
-    O.fillText('code-rabbit hugs', W / 2, H * .5); font(O, 1.4 * u, F.mono); O.textAlign = 'center'; O.fillStyle = COL.dim; if ('letterSpacing' in O) O.letterSpacing = '.25em';
-    O.fillText('move the pointer, or don’t', W / 2, H * .5 + 4.5 * u); if ('letterSpacing' in O) O.letterSpacing = '0px'; O.globalAlpha = 1; O.textAlign = 'left'; }
-  ghostLines(k, .16);
+    O.fillText('code-rabbit hugs', W / 2, H * .9); font(O, 1.4 * u, F.mono); O.textAlign = 'center'; O.fillStyle = COL.dim; if ('letterSpacing' in O) O.letterSpacing = '.25em';
+    O.fillText('move the pointer, or don’t', W / 2, H * .9 + 3.6 * u); if ('letterSpacing' in O) O.letterSpacing = '0px'; O.globalAlpha = 1; O.textAlign = 'left'; }
+  ghostLines(k, .12);
 });
 
 // ============================================================ 0:38 opalescent crosswalk
-add(38.85, 53.25, { irid: 1, turb: 1.1, decay: .976 }, ({ k }) => {
-  const { W, H, u, t } = E, { ys, bh } = stripes(k, .82), size = Math.min(6 * u, E.fw * .056), swap = t > wordT(2, /soul/);
-  const inside = new Path2D(), outside = new Path2D(); outside.rect(0, 0, W, H);
-  for (const y of ys) { inside.rect(W * .08, y, W * .84, bh); outside.rect(W * .08, y, W * .84, bh); }
-  seq(2, 5, (i, lk) => {
-    let cx = W / 2, cy = H / 2;
-    if (i === 5) { const dx = cx - ptr.x, dy = cy - ptr.y, d = Math.hypot(dx, dy) || 1, p = Math.max(0, 1 - d / (45 * u)) * 14 * u; cx += dx / d * p + Math.sin(t * 5) * u; cy += dy / d * p; }
-    const A1 = { size, fam: F.serif, col: COL.paper, k: k * lk }, B1 = { size: size * .82, fam: F.mono, style: 'bold', col: '#101018', k: k * lk };
-    O.save(); O.clip(outside, 'evenodd'); const L = words(O, i, cx, cy, swap ? A1 : { ...B1, col: COL.paper }); O.restore();
-    O.save(); O.clip(inside); words(O, i, cx, cy, swap ? B1 : { ...A1, col: '#101018' }); O.restore();
-    words(I, i, cx, cy, { ...A1, col: PAL[i % 5], ink: .09 });
-    if (i === 4) { const q = sm(.35, 1, cprog(4)), hw = L.w + 6 * u, hh = (L.h * .56 + 2 * u) * q; // hoodie pulled to nose-bridge
-      O.globalAlpha = k * lk * .96; O.fillStyle = '#0a0a12'; rr(O, cx - hw / 2, cy - L.h / 2 - 2 * u, hw, hh, [3 * u, 3 * u, 6 * u, 6 * u]); O.fill(); O.globalAlpha = 1; }
-  });
+// the words are painted ON the stripes; a stripe only goes white when one of its words is sung, and kicks with the drum
+add(38.85, 53.25, { irid: .8, turb: 1, decay: .962, inject: .5, thump: 1.2 }, ({ k }) => {
+  const { W, H, u, t } = E, n = 5, gap = H * .03, top = H * .1, sh = (H * .8 - gap * (n - 1)) / n, x0 = W * .05, sw = W * .9, swap = t > wordT(2, /soul/), cur = clamp(cueAt(t), 2, 5);
+  const rows = i => { const ws = wordsOf(i), out = Array.from({ length: n }, () => []); ws.forEach((w, j) => out[Math.floor(j * n / ws.length)].push(w)); return out; };
+  const R0 = rows(cur), BR = [], DX = [];
+  for (let s = 0; s < n; s++) {
+    let lit = 0, fl = 0; for (const w of R0[s]) if (t >= w.a) { lit = Math.max(lit, .42 + .58 * Math.exp(-(t - w.a) * 2.4)); fl = Math.max(fl, Math.exp(-(t - w.a) * 9)); }
+    const b = clamp(.07 + lit + .16 * E.kick * ((s + E.beatN) % 2 ? 1 : .2)), y = top + s * (sh + gap), dx = ((s + E.beatN) % 2 ? 1 : -1) * E.kick * 1.4 * u;
+    O.fillStyle = rgba(238, 240, 250, b * k); O.fillRect(x0 + dx, y, sw, sh);
+    I.fillStyle = PAL[(s + cur) % 5]; I.globalAlpha = k * (.02 + .5 * fl); I.fillRect(x0 + dx, y, sw, sh); I.globalAlpha = 1; BR[s] = b; DX[s] = dx;
+  }
+  seq(2, 5, (i, lk) => { if (lk <= 0) return; const RW = rows(i);
+    for (let s = 0; s < n; s++) { const row = RW[s]; if (!row.length) continue; const y = top + s * (sh + gap) + sh / 2, alt = (s % 2 === 0) !== swap, fam = alt ? F.disp : F.mono, style = alt ? '' : 'bold';
+      const txt = row.map(w => w.w).join(' '), size = Math.min(sh * .62, fit(txt, sw * .9, 999, fam, style)); font(O, size, fam, style); const sp = O.measureText(' ').width; let x = x0 + (sw - O.measureText(txt).width) / 2 + (i === 5 ? Math.sin(t * 7 + s * 2) * 1.3 * u : 0);
+      for (const w of row) { const wd = O.measureText(w.w).width, age = t - w.a, wx = x; x += wd + sp; if (age < 0) continue; const pop = Math.exp(-age * 9);
+        O.save(); O.translate(wx + wd / 2 + DX[s], y); O.scale(1 + pop * .14, 1 + pop * .14); O.globalAlpha = k * lk * clamp(age / .05); O.fillStyle = BR[s] > .45 ? '#0b0b12' : COL.paper; O.fillText(w.w, -wd / 2, 0); O.restore(); } } });
+  O.globalAlpha = 1;
 });
 
-// ============================================================ 0:53 the kitchen sink
-function arcText(c, i, cx, cy, Rr, size, col, a, rot) {
-  const text = cues[i].text, n = charsShown(i); font(c, size, F.serif, 'italic'); c.textAlign = 'center';
-  const ws = [...text].map(ch => c.measureText(ch).width), tot = ws.reduce((x, y) => x + y, 0); let acc = 0; const st = -PI / 2 - tot / Rr / 2 + rot;
-  c.fillStyle = col; c.globalAlpha = a;
-  for (let j = 0; j < n && j < text.length; j++) { const g = st + (acc + ws[j] / 2) / Rr; c.save(); c.translate(cx + Math.cos(g) * Rr, cy + Math.sin(g) * Rr); c.rotate(g + PI / 2); c.fillText(text[j], 0, 0); c.restore(); acc += ws[j]; }
-  c.textAlign = 'left'; c.globalAlpha = 1;
-}
-add(53.25, 68.7, t => ({ swirl: 1.15, drain: t > 56 && t < 61 ? 1.5 : .85, turb: .6, irid: .85, decay: .979 }), ({ k }) => {
-  const { W, H, u, t } = E, cx = W / 2, cy = H / 2, Rr = Math.min(W, H) * .34;
-  spiral(k, 1);
-  O.globalAlpha = k; O.fillStyle = '#04040a'; O.beginPath(); O.arc(cx, cy, 2.6 * u * (1 + E.pulse * .3), 0, TAU); O.fill(); O.strokeStyle = 'rgba(243,239,230,.35)'; O.lineWidth = 1; O.stroke(); O.globalAlpha = 1;
-  seq(6, 8, (i, lk) => {
-    font(O, 100, F.serif, 'italic'); const size = Math.min(4.6 * u, 100 * Rr * 5.2 / O.measureText(cues[i].text).width), rot = (t - cues[i].a) * .1 - .25;
-    arcText(O, i, cx, cy, Rr, size, i === 8 ? COL.violet : COL.paper, k * lk, rot); arcText(I, i, cx, cy, Rr, size, PAL[i % 5], k * lk * .1, rot);
-  });
-  seq(9, 9, (i, lk) => { // post-binary schism: one line, cut in two
-    const size = Math.min(5.2 * u, E.fw * .05), d = (sm(0, .5, t - wordT(9, /schism/)) * 3 + .35 + E.pulse * .5) * u;
-    O.save(); O.beginPath(); O.rect(0, 0, W, cy); O.clip(); words(O, i, cx - d, cy, { size, col: COL.pink, k: k * lk }); O.restore();
-    O.save(); O.beginPath(); O.rect(0, cy, W, H); O.clip(); words(O, i, cx + d, cy, { size, col: COL.blue, k: k * lk }); O.restore();
-    words(I, i, cx, cy, { size, col: COL.violet, ink: .08, k: k * lk });
+// ============================================================ 0:53 syllogism · all moments at once · dot-matrix · splice
+let WALL = null;
+function wall(k, fall) { const { W, H, u } = E, fs = 1.55 * u;
+  if (!WALL || WALL.W !== W) { font(O, fs, F.mono); const rows = ['']; for (const w of cues.map(c => c.text).join('  /  ').split(' ')) { const r = rows[rows.length - 1]; if (O.measureText(r + ' ' + w).width > W * .94) rows.push(w); else rows[rows.length - 1] = r ? r + ' ' + w : w; } WALL = { W, rows }; }
+  font(O, fs, F.mono); O.fillStyle = COL.paper; const lh = Math.min(fs * 1.5, H * .92 / WALL.rows.length), y0 = H / 2 - WALL.rows.length * lh / 2;
+  WALL.rows.forEach((r, j) => { const f = Math.max(0, fall - hash(j * 3.1) * .5), y = y0 + j * lh + f * f * H * 1.4; O.globalAlpha = k * .3 * (1 - clamp(f)); O.save(); O.translate(W / 2, y); O.scale(1 - clamp(f * 1.2) * .8, 1); O.fillText(r, -W * .47, 0); O.restore(); });
+  O.globalAlpha = 1; }
+const spc = document.createElement('canvas'), spx = spc.getContext('2d');
+add(53.25, 68.7, t => t < cues[8].a ? { decay: .9, inject: .25, turb: .4, irid: .5, block: t > cues[7].a ? 1 : 0, thump: 1.5 } : t < cues[9].a ? { decay: .962, inject: .5, irid: .6, turb: .8 } : { block: 1, decay: .95, inject: .5, thump: 1.5, irid: .5 }, ({ k }) => {
+  const { W, H, u, t } = E;
+  seq(6, 6, (i, lk) => { // a syllogism that does not follow
+    const ws = wordsOf(6), size = Math.min(6.5 * u, E.fw * .06), ry = [.34, .46, .6], lab = ['P1', 'P2', '∴'], grp = [[ws[0]], [ws[1]], ws.slice(2)], x = W / 2 - Math.min(W * .42, 30 * u);
+    grp.forEach((g, r) => E.both((c, ink) => { const a = t - g[0].a; font(c, size * .5, F.mono); c.globalAlpha = k * lk * clamp(a / .05) * (ink ? .05 : .7); c.fillStyle = COL.dim; c.fillText(lab[r], x, H * ry[r]);
+      font(c, size, r === 2 ? F.disp : F.serif, r === 2 ? 'italic' : ''); let xx = x + size * 1.3;
+      for (const w of g) { const aw = t - w.a; if (!ink) G.once('sy' + w.i, () => G.word(w.w, size, r === 2 ? F.disp : F.serif, r === 2 ? 'italic' : '', xx, H * ry[r], w.a, w.b, nextA(6) + .1, r === 2 ? COL.mint : COL.paper));
+        if (aw >= 0) { c.globalAlpha = k * lk * clamp(aw / .05) * (ink ? .07 : 1); c.fillStyle = r === 2 ? COL.mint : COL.paper; c.fillText(w.w, xx, H * ry[r] - Math.exp(-aw * 9) * size * .2); } xx += c.measureText(w.w + ' ').width; } c.globalAlpha = 1; }));
+    const inv = t - ws[2].a - .1; if (inv > 0) { [0, 1].forEach(r => { O.globalAlpha = k * lk; O.strokeStyle = COL.red; O.lineWidth = size * .08; O.beginPath(); O.moveTo(x + size * 1.2, H * ry[r]); O.lineTo(x + size * 1.2 + Math.min(W * .6, size * 9) * clamp((inv - r * .08) / .15), H * ry[r]); O.stroke(); });
+      O.save(); O.translate(W * .7, H * .27); O.rotate(-.16); const sc = 1 + Math.exp(-inv * 12); O.scale(sc, sc); font(O, size * .7, F.mono, 'bold'); O.textAlign = 'center'; O.globalAlpha = k * lk; O.strokeStyle = O.fillStyle = COL.red; O.lineWidth = size * .06; O.strokeRect(-size * 2.4, -size * .6, size * 4.8, size * 1.2); O.fillText('INVALID', 0, 0); O.restore(); O.textAlign = 'left'; O.globalAlpha = 1; }
   });
   const d = t - wordT(6, /blink/); // Tralfamadorian blink
   if (d > 0 && d < .36) { const lid = (1 - Math.abs(d / .18 - 1)) * H * .51; O.fillStyle = '#050508'; O.fillRect(0, 0, W, lid); O.fillRect(0, H - lid, W, lid); }
+  seq(7, 7, (i, lk) => { // all moments: every line of the song at once, and a different one in your face each sixteenth
+    const a7 = cues[7].a, ts = wordT(7, /sink/); wall(k * lk, Math.max(0, t - ts - .2));
+    const st = Math.floor((t - a7) / (BEAT / 4)), ph = (((t - a7) / (BEAT / 4)) % 1 + 1) % 1, li = 2 + Math.floor(hash(st * 7.3 + 1) * 46), m5 = ((st % 5) + 5) % 5, [fam, style, up] = [[IMPACT, '', 1], [F.mono, 'bold', 0], [F.disp, 'italic', 0], [F.sans, 'bold', 1], [F.serif, '', 0]][m5];
+    if (t >= a7 && t < ts + .4 && li !== 7) { let txt = cues[li].text; if (up) txt = txt.toUpperCase(); const wx = txt.split(' '), half = Math.ceil(wx.length / 2), l2 = [wx.slice(0, half).join(' '), wx.slice(half).join(' ')];
+      const size = Math.min(13 * u, fit(l2[0].length > l2[1].length ? l2[0] : l2[1], W * .92, 999, fam, style));
+      E.both((c, ink) => { c.save(); c.translate(W / 2, H * .42); c.rotate((hash(st) - .5) * .1); font(c, size, fam, style); c.textAlign = 'center'; c.fillStyle = PAL[m5]; c.globalAlpha = k * lk * (ink ? .25 * (1 - ph) : 1 - ph * .35);
+        l2.forEach((s, j) => { if (!ink && fam === IMPACT) { c.lineJoin = 'round'; c.lineWidth = size * .12; c.strokeStyle = '#000'; c.strokeText(s, 0, (j - .5) * size * 1.05); } c.fillText(s, 0, (j - .5) * size * 1.05); }); c.restore(); }); }
+    O.globalAlpha = k * lk * .88; O.fillStyle = '#05050a'; O.fillRect(0, H * .8, W, H * .1); O.globalAlpha = 1;
+    para(i, W / 2, H * .85, { size: Math.min(4 * u, E.fw * .038), fam: F.mono, style: 'bold', col: COL.mint, k: k * lk, maxW: W * .94, ink: 0 });
+  });
+  seq(8, 8, (i, lk) => para(i, W / 2, H / 2, { size: Math.min(8.5 * u, E.fw * .08), fam: F.disp, k: k * lk, maxW: W * .86, lh: 1.12, col: w => /velvet/.test(w.w) ? COL.pink : /catechism/.test(w.w) ? COL.violet : COL.paper }));
+  seq(9, 9, (i, lk) => { if (lk <= 0) return; // splice: the line arrives cut into strips in the wrong order, taped, then parts in two
+    const size = Math.min(6 * u, E.fw * .056), cw = Math.ceil(W * .9), ch = Math.ceil(size * 3.4), q = sm(0, .85, cprog(9)), sch = sm(0, .4, t - wordT(9, /schism/));
+    if (spc.width !== cw * 2 || spc.height !== ch * 2) { spc.width = cw * 2; spc.height = ch * 2; }
+    spx.setTransform(2, 0, 0, 2, 0, 0); spx.clearRect(0, 0, cw, ch); spx.globalAlpha = 1;
+    words(spx, 9, cw / 2, ch / 2, { size, grains: false, maxW: cw * .96, col: w => /foma/.test(w.w) ? COL.pink : /schism|post-binary/.test(w.w) ? COL.blue : COL.paper });
+    const N = 16, sw2 = cw / N, st = Math.floor(t / (BEAT / 2)), perm = [...Array(N).keys()], swaps = Math.round((1 - q) * 7);
+    for (let s = 0; s < swaps; s++) { const a = Math.floor(hash(st * 3.1 + s) * N), b = Math.floor(hash(st * 5.7 + s * 2.3) * N); [perm[a], perm[b]] = [perm[b], perm[a]]; }
+    E.both((c, ink) => { c.globalAlpha = k * lk * (ink ? .08 : 1); const dd = sch * 3 * u;
+      for (let j = 0; j < N; j++) { const src = perm[j], moved = src !== j, x = (W - cw) / 2 + j * sw2, y = H / 2 - ch / 2 + (moved ? (hash(j + st) - .5) * 5 * u : 0);
+        c.drawImage(spc, src * sw2 * 2, 0, sw2 * 2, ch, x - dd, y, sw2, ch / 2); c.drawImage(spc, src * sw2 * 2, ch, sw2 * 2, ch, x + dd, y + ch / 2, sw2, ch / 2);
+        if (moved && !ink) { c.strokeStyle = 'rgba(255,225,120,.75)'; c.lineWidth = 1; c.strokeRect(x - dd, y, sw2, ch); c.fillStyle = 'rgba(255,225,120,.16)'; c.fillRect(x - dd, y + ch * .42, sw2, ch * .16); } }
+      c.globalAlpha = 1; });
+  });
 });
 
 // ============================================================ 1:08 tickets, trophies, heavy water
@@ -254,7 +296,7 @@ function curlText(i, cx, cy, size, k) {
     c.globalAlpha = 1;
   });
 }
-add(68.7, 83.6, t => t < 79.3 ? { turb: .9, grav: .3, irid: .4 } : { grav: 1.3, turb: .35, irid: .65, decay: .982 }, ({ k }) => {
+add(68.7, 83.6, t => t < 79.3 ? { turb: .9, grav: .3, irid: .4, inject: .55, decay: .955, thump: 1.3 } : { grav: 1.3, turb: .35, irid: .65, decay: .982 }, ({ k }) => {
   const { W, H, u, t } = E, size = Math.min(5.4 * u, E.fw * .052);
   tickets(k * (1 - sm(75.2, 76.2, t)), wordT(10, /ghosting/));
   seq(10, 10, (i, lk) => para(i, W / 2, H * .44, { size, fam: F.sans, style: 'bold', k: k * lk, col: w => /Jira|tickets/.test(w.w) ? COL.blue : COL.paper,
@@ -289,16 +331,16 @@ add(68.7, 83.6, t => t < 79.3 ? { turb: .9, grav: .3, irid: .4 } : { grav: 1.3, 
 });
 
 // ============================================================ 1:23 infundibulum → half-smile
-add(83.6, 92.2, { swirl: .75, drain: .5, irid: .75, turb: .7 }, ({ k }) => {
+add(83.6, 92.2, t => t < cues[15].a ? { swirl: .3, drain: .3, irid: .6, turb: .7, inject: .5, decay: .95, thump: 1.6 } : { swirl: .5, irid: .8, turb: .6 }, ({ k }) => {
   const { W, H, u, t } = E, f = lineK(14), q15 = clamp((t - cues[15].a) / ((wordsOf(15).end - cues[15].a) * .9));
   stars(k * (t < cues[15].a ? .5 : 1), t < cues[15].a ? 0 : q15, true);
   if (t > cues[15].a - .2) G.once('smile', () => { const cx = W / 2, cy = H * .42; G.shape(c => { c.lineWidth = 1.5 * u; c.lineCap = 'round'; c.beginPath(); c.moveTo(cx - 20 * u, cy - u); c.quadraticCurveTo(cx + 4 * u, cy + 14 * u, cx + 23 * u, cy - 8 * u); c.stroke(); },
     80000, r => wordT(15, /cosmos/) + r * (wordsOf(15).end - wordT(15, /cosmos/)), 92.05, COL.paper); });
   if (f > 0) {
-    for (let j = 0; j < 11; j++) { const yy = lerp(H * .14, H * .84, j / 10), rx = E.fw * .42 * Math.exp(-j * .33) + 2 * u, ox = Math.sin(t * 1.5 + j * .5) * (10 - j) * .5 * u;
+    for (let j = 0; j < 11; j++) { const yy = lerp(H * .14, H * .84, j / 10), rx = (E.fw * .42 * Math.exp(-j * .33) + 2 * u) * (1 + .16 * E.kick - .1 * E.snap), ox = Math.sin(t * 1.5 + j * .5) * (10 - j) * .5 * u + (j % 2 ? 1 : -1) * E.snap * 2 * u;
       E.both((c, ink) => { c.globalAlpha = k * f * (ink ? .05 : .3); c.strokeStyle = COL.violet; c.lineWidth = ink ? 2 : 1; c.setLineDash(ink ? [] : [6, 5]); c.lineDashOffset = -t * 30; c.beginPath(); c.ellipse(W / 2 + ox, yy, rx, rx * .16, 0, 0, TAU); c.stroke(); c.setLineDash([]); }); }
     const ws = wordsOf(14), groups = [[0], [1], [2, 3, 4], [5]], sizes = [7.2, 6, 4.2, 3], sc = Math.min(u, E.fw * .0085); let y = H * .25;
-    groups.forEach((g, li) => { const size = sizes[li] * sc, txt = g.map(j => ws[j]), ox = Math.sin(t * 1.5 + li * 1.6) * (4 - li) * 1.3 * u;
+    groups.forEach((g, li) => { const size = sizes[li] * sc * (1 + .16 * E.kick * (li % 2 ? 1 : -.5)), txt = g.map(j => ws[j]), ox = Math.sin(t * 1.5 + li * 1.6) * (4 - li) * 1.3 * u + (hash(li + E.beatN * 4 + Math.floor(E.beat * 4)) - .5) * E.hat * 3.5 * u;
       E.both((c, ink) => { font(c, size, F.disp, li === 1 ? 'italic' : ''); let x = W / 2 + ox - c.measureText(txt.map(w => w.w).join(' ')).width / 2;
         for (const w of txt) { const age = t - w.a; if (age >= 0) { c.globalAlpha = clamp(age / .16) * k * f * (ink ? .08 : 1); c.fillStyle = ink ? COL.violet : COL.paper; c.fillText(w.w, x, y); } x += c.measureText(w.w + ' ').width; } c.globalAlpha = 1; });
       y += size * 1.55; });
@@ -307,6 +349,14 @@ add(83.6, 92.2, { swirl: .75, drain: .5, irid: .75, turb: .7 }, ({ k }) => {
 });
 
 // ============================================================ chorus: the linter
+function contrib(k, both) { // rows = stems, columns = the last 26 beats: the mix drawn as a contribution graph
+  const { W, H, u, t } = E, cols = 53, cell = Math.min(W * .96 / cols, 2.7 * u), x0 = (W - cols * cell) / 2, names = ['vox', 'bv', 'drums', 'bass', 'keys', 'synth', 'mix'], shade = ['#161b22', '#0e4429', '#006d32', '#26a641', '#39d353'];
+  for (const top of both ? [0, 1] : [0]) { const y0 = top ? 3 * u : H - 7 * cell - 5 * u;
+    for (let c = 0; c < cols; c++) { const tt = t - (cols - 1 - c) * BEAT / 2;
+      for (let r = 0; r < 7; r++) { const v = r < 6 ? E.stemAt(names[r], tt) : E.env('rms', tt), lv = v < .08 ? 0 : v < .28 ? 1 : v < .5 ? 2 : v < .75 ? 3 : 4, hot = c === cols - 1;
+        O.globalAlpha = k * (hot ? 1 : .8); O.fillStyle = hot && lv ? '#aaffcc' : shade[lv]; rr(O, x0 + c * cell + cell * .1, y0 + (top ? 6 - r : r) * cell + cell * .1, cell * .8, cell * .8, cell * .18); O.fill(); } }
+    if (!top) { font(O, 1.2 * u, F.mono); O.fillStyle = COL.dim; O.globalAlpha = k * .8; O.fillText(E.S.onsets.length.toLocaleString() + ' contributions in the last 4:15', x0, y0 - 1.5 * u); } }
+  O.globalAlpha = 1; }
 const KW = new Set(['Give', 'me', 'in', 'the', 'So', 'so', 'it', 'goes,', 'and', 'on', 'a', 'of', 'out', 'by', 'through', 'every', 'your', 'is', 'them']);
 function chorus(base, k, big) {
   const { W, H, u, t, T } = E, lines = [];
@@ -353,7 +403,8 @@ function chorus(base, k, big) {
   if (wrapQ > 0) E.both((c, ink) => { font(c, lh * 6.5, F.disp); c.textAlign = 'center'; c.fillStyle = COL.amber; c.globalAlpha = k * wrapQ * (ink ? .06 : .85); const o = (1 - wrapQ) * 12 * u + E.pulse * u;
     c.fillText('{', x0 - 5 * u - o, H / 2); c.fillText('}', x0 + bw + 5 * u + o, H / 2); c.textAlign = 'left'; c.globalAlpha = 1; });
   O.globalAlpha = 1;
-  callRabbits((big ? 84 : 38) * sm(0, 4, t - cues[base].a) * k, ptr.x, ptr.y, big ? 20 : 13);
+  callRabbits((big ? 84 : 38) * sm(0, 4, t - cues[base].a) * k, ptr.x, ptr.y, big ? 20 : 13, [1, 2, 3, 0, 2, 1, 3, 2][(Math.floor(E.beatN / 8) % 8 + 8) % 8], .3);
+  contrib(k, big);
   // grain set-pieces: a heart (or a rabbit) on "hugs", a 42, an asterisk for each "so it goes"
   const th = wordT(base, /hugs/), t42 = wordT(base + 2, /forty/), w3 = wordsOf(base + 3);
   if (t > th - 1) G.once('hug' + base, () => big
@@ -362,10 +413,10 @@ function chorus(base, k, big) {
   if (t > t42 - 1) G.once('42' + base, () => G.shape(gText('42', 44 * u, F.mono, 'bold', W / 2, H * .5), 42000, r => t42 + r * .2, t42 + 1.05, COL.red));
   [0, 3].forEach(j => { if (t > w3[j].a - 1) G.once('sig' + base + j, () => G.shape(c => { c.lineWidth = 2.2 * u; c.lineCap = 'round'; c.translate(W * (j ? .72 : .28), H / 2); c.rotate(j); c.beginPath(); for (let q = 0; q < 4; q++) { const g = q * PI / 4, r = 20 * u; c.moveTo(-Math.cos(g) * r, -Math.sin(g) * r); c.lineTo(Math.cos(g) * r, Math.sin(g) * r); } c.stroke(); }, 30000, r => w3[j].a + r * .08, w3[j].a + .55, COL.amber)); });
 }
-add(92.2, 122.7, { fluoro: .9, irid: .45, turb: 1.1 }, ({ k }) => chorus(16, k, false));
+add(92.2, 122.7, t => ({ fluoro: .9, irid: .35, turb: .7, inject: .3, decay: .95, thump: 1.5, block: (Math.floor(E.beatN / 4) % 4 + 4) % 4 === 3 ? 1 : 0 }), ({ k }) => chorus(16, k, false));
 
 // ============================================================ 2:02 diff · ice-nine
-add(122.7, 127.7, t => ({ freeze: t > cues[25].a ? 1 : 0, turb: .8, irid: .5 }), ({ k }) => {
+add(122.7, 127.7, t => ({ freeze: t > cues[25].a ? 1 : 0, turb: .8, irid: .5, block: t > cues[25].a ? 0 : 1 }), ({ k }) => {
   const { W, H, u, t } = E, rows = ['@@ -47,1 +47,2 @@ verse 2', '- ' + cues[23].text, '+ ' + cues[24].text, '+ ' + cues[25].text];
   const size = Math.min(3.5 * u, fit(rows[2], E.fw * .82, 99, F.mono)), lh = size * 2.1, y0 = H * .36; font(O, size, F.mono); const cw = O.measureText('M').width, x0 = (W - rows[2].length * cw) / 2;
   const frz = sm(0, 1.2, t - cues[25].a);
@@ -392,7 +443,7 @@ function pixelText(i, cx, cy, maxW, col, k) {
   for (const w of L) if (E.t >= w.a) pxx.fillText(w.w, Math.round(pxc.width / 2 + w.x), Math.round(pxc.height / 2 + w.y));
   E.both((c, ink) => { c.imageSmoothingEnabled = false; c.globalAlpha = k * (ink ? .06 : 1); c.drawImage(pxc, Math.round(cx - pxc.width * sc / 2), Math.round(cy - pxc.height * sc / 2), pxc.width * sc, pxc.height * sc); c.imageSmoothingEnabled = true; c.globalAlpha = 1; });
 }
-add(127.7, 139.5, { irid: .55, turb: .8, swirl: .25, decay: .975 }, ({ k }) => {
+add(127.7, 139.5, { irid: .5, turb: .6, decay: .95, inject: .4, block: 1, thump: 1.2 }, ({ k }) => {
   const { W, H, u, t } = E; beads(k, 1);
   seq(26, 27, (i, lk) => pixelText(i, W / 2, H / 2, Math.min(W * .6, E.fw * .5), '#c9e3a2', k * lk));
   if (t >= cues[28].a) {
@@ -410,7 +461,7 @@ add(127.7, 139.5, { irid: .55, turb: .8, swirl: .25, decay: .975 }, ({ k }) => {
 
 // ============================================================ 2:19 the review · heart · blush · tote-bag
 const ROM = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI', 'XVII', 'XVIII', 'XIX', 'XX'];
-add(139.5, 154.0, t => ({ blush: sm(cues[32].a - .2, cues[32].a + 1.6, t) * (1 - sm(152.6, 154, t)) * .95, irid: .45 }), ({ k }) => {
+add(139.5, 154.0, t => ({ blush: sm(cues[32].a - .2, cues[32].a + 1.6, t) * (1 - sm(152.6, 154, t)) * .95, irid: .45, inject: .6, decay: .96, thump: 1.2 }), ({ k }) => {
   const { W, H, u, t } = E, size = Math.min(5.2 * u, E.fw * .05);
   font(O, 1.5 * u, F.mono); O.textAlign = 'center'; O.fillStyle = COL.dim; O.globalAlpha = k * .8; O.fillText('pull request #42  ·  review requested', W / 2, H * .16); O.textAlign = 'left'; O.globalAlpha = 1;
   seq(30, 30, (i, lk) => { // triple-entendre: three readings converging
@@ -474,7 +525,7 @@ function beadsStep(mode, k, q) {
   }
   O.globalAlpha = I.globalAlpha = 1;
 }
-add(154.0, 164.75, t => ({ turb: .9, irid: .3, decay: .97, grav: t > wordT(35, /catacomb/) && t < cues[36].a ? 1.4 : t >= wordT(36, /salvation/) ? -1.6 : 0 }), ({ k }) => {
+add(154.0, 164.75, t => ({ turb: .9, irid: .3, decay: .95, inject: .3, thump: 1.3, grav: t > wordT(35, /catacomb/) && t < cues[36].a ? 1.4 : t >= wordT(36, /salvation/) ? -1.6 : 0 }), ({ k }) => {
   const { W, H, u, t } = E, size = Math.min(4.8 * u, E.fw * .046), tc = wordT(35, /catacomb/);
   beadsStep(t < cues[35].a ? 'build' : t < tc ? 'rack' : t < cues[36].a ? 'fall' : 'rise', k, cprog(34));
   seq(34, 34, (i, lk) => para(i, W / 2, H * .28, { size, fam: F.disp, k: k * lk, col: w => /styrofoam/.test(w.w) ? '#fff' : COL.paper }));
@@ -493,7 +544,9 @@ add(164.75, 172.9, { shear: 1.7, turb: .5, irid: .5, decay: .976 }, ({ k }) => {
   seq(37, 37, (i, lk) => para(i, W / 2 + xo, H * .36, { size, fam: F.sans, style: 'bold', k: k * lk, col: w => /simulation/.test(w.w) ? COL.mint : COL.paper,
     wf: (w, c) => { if (/simulation/.test(w.w)) font(c, size * .9, F.mono, 'bold'); c.fillText(w.w, 0, ((w.i + E.beatN) % 2 ? -1 : 1) * Math.abs(Math.sin(E.beat * PI)) * 1.1 * u); } }));
   const cx = W * (.1 + .8 * clamp((t - t0) / 8)) + (E.beat < .5 ? 0 : 1.5 * u), cy = H * .78 - Math.abs(Math.sin(E.beat * TAU)) * u;
-  O.font = `${7 * u}px serif`; O.textAlign = 'center'; O.textBaseline = 'middle'; O.globalAlpha = k; O.fillText('🦀', cx, cy); O.globalAlpha = 1; O.textAlign = 'left';
+  O.font = `${6 * u}px serif`; O.textAlign = 'center'; O.textBaseline = 'middle'; O.globalAlpha = k;
+  for (let j = 0; j < 9; j++) { const jx = W * (.1 + .1 * j) + ((E.beatN + j) % 2 ? 1 : -1) * (E.beat < .5 ? 1.6 : -1.6) * u + Math.sin((t - t0) * .9) * 4 * u, jy = H * .8 - Math.abs(Math.sin((E.beat + (j % 2) * .5) * PI)) * 2.2 * u * (.4 + E.kick); O.fillText('🦀', jx, jy); }
+  O.globalAlpha = 1; O.textAlign = 'left';
   I.globalAlpha = .3 * k; I.fillStyle = '#ff7a3c'; I.beginPath(); I.arc(cx, cy, 2.5 * u, 0, TAU); I.fill(); I.globalAlpha = 1;
 });
 
@@ -527,7 +580,7 @@ function gitGraph(k, t0, t1) {
   O.globalAlpha = 1;
 }
 const TODO = ['// TODO: document the universe', '// ???', '// who wrote this', '// FIXME: time', '// works. nobody knows why', '/* here be dragons */', '// temporary (2011)'];
-add(172.9, 189.0, { glitch: .85, turb: .35, irid: .25, decay: .962, dim: .3 }, ({ k }) => {
+add(172.9, 189.0, { glitch: .85, turb: .35, irid: .25, decay: .955, dim: .3, block: 1, inject: .5 }, ({ k }) => {
   const { W, H, u, t } = E, size = Math.min(4.4 * u, E.fw * .042);
   gitGraph(k, 172.9, 189);
   seq(38, 38, (i, lk) => glitchText(i, W / 2, H * .34, size, k * lk));
@@ -546,7 +599,7 @@ add(172.9, 189.0, { glitch: .85, turb: .35, irid: .25, decay: .962, dim: .3 }, (
 });
 
 // ============================================================ 3:08 chorus again — every ensemble at once
-add(189.0, 233.7, t => { const q = sm(189, 222, t), e = sm(221, 224, t); return { fluoro: .8 * (1 - e), irid: .5 + .45 * q, swirl: .45 * q + .7 * e, drain: .5 * e, turb: 1 + .5 * q, decay: .976 }; }, ({ k }) => {
+add(189.0, 233.7, t => { const q = sm(189, 222, t), e = sm(221, 224, t); return { fluoro: .8 * (1 - e), irid: .5 + .45 * q, swirl: .7 * e, drain: .5 * e, turb: 1 + .5 * q, decay: lerp(.95, .976, e), inject: lerp(.3, 1, e), thump: 1.6, block: e < .5 && (Math.floor(E.beatN / 2) % 4 + 4) % 4 === 3 ? 1 : 0 }; }, ({ k }) => {
   const { t } = E, n = cueAt(t) - 41, e = sm(221.5, 228, t);
   if (n >= 4) spiral(k, .6 + .9 * e);
   if (n >= 2) stripes(k, 0);
@@ -605,7 +658,8 @@ E.post.push(() => { const { W, H, t } = E; O.fillStyle = 'rgba(243,239,230,.22)'
 // The same matter is seen through different pictures of the world: phosphor terminal, ASCII, deep-fried macro,
 // thermal camera, halftone print, handheld LCD, kaleidoscope, bitmap, vaporwave. Lyrics choose the register.
 const c_ = i => cues[i].a, wAt = (i, re, nth = 0) => { const m = wordsOf(i).filter(w => re.test(w.w)); return (m[nth] || m[0] || wordsOf(i)[0]).a; };
-const ORDER = ['crt', 'ascii', 'therm', 'half', 'vap', 'kal', 'lcd', 'fry'];
+const ORDER = ['crt', 'ascii', 'therm', 'half', 'vap', 'edge', 'lcd', 'fry', 'xerox', 'vhs'], NO = ORDER.length;
+const CUTS = [[23, 38.85, ['half', 'xerox', 'edge'], .45], [38.85, 83.6, ['vap', 'vhs', 'edge', 'therm', 'fry'], .4], [83.6, 87.9, ['fry', 'vap', 'xerox', 'edge', 'vhs'], .95], [92.2, 122.7, ['ascii', 'edge', 'xerox'], .45], [122.7, 172.9, ['vhs', 'xerox', 'lcd', 'fry', 'therm', 'edge', 'vap'], .65], [172.9, 189, ['vhs', 'edge'], .35]];
 let SCHED = null;
 function sched() {
   const s = [], put = (a, b, k, v = 1, f = .04) => s.push([a, b, k, v, f]);
@@ -614,15 +668,14 @@ function sched() {
   put(wAt(0, /pull-request/), 18.3, 'crt', .7, .3);
   put(18.7, 24.2, 'half', 1, .5);                                   // "so it goes": the paperback page
   put(c_(3), c_(4), 'vap'); put(wAt(4, /hoodie/), c_(5), 'therm'); put(wAt(5, /gig/), c_(6), 'fry');
-  put(wAt(6, /Tralfamadorian/), c_(8), 'kal', 1, 0); put(c_(8), c_(9), 'half'); put(wAt(9, /schism/), wAt(9, /schism/) + .14, 'inv', 1, 0);
+  put(c_(6), c_(7), 'xerox', 1, .05); put(c_(8), c_(9), 'half'); put(c_(9), c_(10), 'vhs', .9, .05); put(wAt(9, /schism/), wAt(9, /schism/) + .14, 'inv', 1, 0);
   put(c_(10), c_(12), 'crt', .85); put(c_(12), c_(13), 'fry'); put(wAt(13, /heavy/), c_(14), 'therm', .8, .3);
-  put(c_(14), c_(15), 'kal', 1, 0);
   for (const b of [16, 41]) {
     put(c_(b), c_(b + 4), 'crt', .8, .15); put(c_(b + 1), c_(b + 2), 'ascii', .72);
     put(wAt(b + 2, /forty/), wAt(b + 2, /forty/) + .16, 'inv', 1, 0);
     [0, 3].forEach(j => put(wordsOf(b + 3)[j].a, wordsOf(b + 3)[j].a + .3, 'half', 1, 0));
     if (b === 41) put(c_(b + 4), c_(b + 5), 'vap');
-    put(c_(b + 5), c_(b + 6), 'kal', 1, 0); put(c_(b + 6), c_(b + 7), 'half');
+    put(c_(b + 5), c_(b + 6), 'vhs', 1, .05); put(c_(b + 6), c_(b + 7), 'half');
   }
   put(c_(24), c_(25), 'crt', .6); put(c_(26), c_(28), 'lcd', .82); put(c_(28), c_(30), 'half'); put(c_(30), c_(31), 'vap');
   put(c_(33), c_(34), 'half', .9); put(c_(35), wAt(35, /catacomb/), 'crt');
@@ -635,9 +688,11 @@ E.lookFn = (t, L) => {
   SCHED = SCHED || sched();
   for (const [a, b, k, v, f] of SCHED) { if (t < a - f || t > b + f) continue; L[k] = Math.max(L[k], v * (f ? sm(a - f, a + f, t) * (1 - sm(b - f, b + f, t)) : t >= a && t < b ? 1 : 0)); }
   for (const i of [23, 48]) { const a = wAt(i, /bit/), e = wordsOf(i).end + .6; if (t >= a && t < e) L.pix = Math.max(L.pix, Math.pow(clamp((t - a) / (e - a)), 1.5) * .9); } // bit by bit
-  const tail = wordsOf(48).end + .6, bn = ((E.beatN % 8) + 8) % 8;
-  if (t > c_(44) && t < tail && E.snap > .5) L[ORDER[(bn * 3 + Math.floor(E.beat * 2)) % 8]] = 1;      // snares knock the picture sideways
-  if (t >= tail && t < 233.6) L[ORDER[t > 228 ? (bn * 2 + Math.floor(E.beat * 2)) % 8 : bn]] = 1;      // hyperspeed: a register per beat, then per half-beat
+  const tail = wordsOf(48).end + .6, bn = ((E.beatN % NO) + NO) % NO, si = lower(E.SNARES, t + 1e-6) - 1, sAge = si >= 0 ? t - E.SNARES[si] : 9;
+  if (sAge < .1) for (const [a, b, set, pr] of CUTS) if (t >= a && t < b && hash(si * 9.7) < pr) L[set[Math.floor(hash(si * 4.3) * set.length)]] = 1;   // a snare is a cut to another genre
+  if (t >= c_(7) && t < c_(8)) L[ORDER[((Math.floor((t - c_(7)) / (BEAT / 2)) % NO) + NO) % NO]] = 1;   // all moments: all registers, an eighth-note each
+  if (t > c_(41) && t < tail && sAge < .12) L[ORDER[(bn * 3 + si) % NO]] = 1;
+  if (t >= tail && t < 233.6) L[ORDER[t > 228 ? (bn * 2 + Math.floor(E.beat * 2)) % NO : bn]] = 1;      // hyperspeed: a register per beat, then per half-beat
   if (t > 243.85 && t < 252.1) { L[ORDER[bn]] = 1; if (E.kick > .8) L.inv = 1; }
 };
 
@@ -666,6 +721,60 @@ E.post.push(() => { const { W, H, u, t } = E; // "loving every fatal error": the
     const n = Math.min(i === 48 ? 26 : 12, Math.floor((t - a) / (BEAT / 4)) + 1), w = 30 * u, h = 14.5 * u, fade = 1 - sm(e - .4, e, t);
     for (let j = 0; j < n; j++) { const g = j * .55 + (i === 48 ? 2 : 0), x = (i === 48 ? W * .5 + Math.cos(g) * (4 + j * 1.6) * u : W * .1 + j * 3.4 * u) - (i === 48 ? w / 2 : 0), y = (i === 48 ? H * .5 + Math.sin(g) * (3 + j * 1.2) * u - h / 2 : H * .14 + j * 2.7 * u);
       dialog(x, y, w, h, u, fade); } } });
+
+// ---------- stickers: half-second inserts keyed to single words (price tags, stamps, tip screens, red flags)
+let STK = null;
+function stickers() { const s = [], put = (t, d, kind, txt, x, y, rot = 0, sc = 1) => s.push({ t, d, kind, txt, x, y, rot, sc });
+  const xyz = wAt(3, /X-and/); ['X', 'Y', 'Z'].forEach((ch, j) => put(xyz + j * .2, .34, 'big', ch, .25 + .25 * j, .5, (j - 1) * .12));
+  put(wAt(3, /hardware/), .6, 'emoji', '📱', .86, .3, .2);
+  put(wAt(4, /Introverted/), 1.3, 'chip', '🌙 Do Not Disturb · ON', .5, .06); put(wAt(4, /cosmo/), .7, 'emoji', '🪐', .85, .5, -.2);
+  put(wAt(5, /gig/), .9, 'tag', '+ $2.99 service fee', .28, .06, -.08); put(wAt(5, /tollbooth/), 1.4, 'chip', 'Add a tip?   20%   25%   30%', .5, .95); put(wAt(5, /tollbooth/) + .25, .8, 'stamp', 'SURGE ×1.8', .78, .06, .14);
+  put(wAt(11, /Curling/), .7, 'emoji', '🦔', .84, .28, .3); put(wAt(11, /corporate/), .9, 'stamp', 'SYNERGY', .22, .22, -.2);
+  const tg = ['$1.99', '50% OFF', 'AS IS', 'VINTAGE', 'Y2K', '1 OF 1', 'NO RETURNS', '25¢', 'USED · GOOD', 'FINAL SALE', 'DEADSTOCK', 'ESTATE'];
+  if (window.STEMS) window.STEMS.vox.filter(o => o[0] >= c_(14) - .02 && o[0] < c_(15)).forEach((o, j) => put(o[0], .5, 'tag', tg[j % tg.length], .1 + .8 * hash(j * 3.3), j % 2 ? .1 + .12 * hash(j) : .8 + .12 * hash(j), (hash(j * 7.1) - .5) * .7));
+  put(wAt(27, /24-hour/), 1.5, 'neon', 'OPEN 24 HRS', .5, .08);
+  put(wAt(30, /triple/), .9, 'stamp', 'ENTENDRE ×3', .76, .2, .16);
+  for (let j = 0; j < 9; j++) put(wAt(32, /crimson/) + j * .07, .9, 'emoji', '🚩', .1 + .1 * j, .16 + .05 * (j % 2), (j % 2 ? .2 : -.2), .8);
+  put(wAt(35, /busted/), .5, 'stamp', '503', .2, .55, -.2, 1.4); put(wAt(35, /rack/), .5, 'stamp', '404', .8, .5, .2, 1.4); put(wAt(35, /catacomb/), .7, 'stamp', 'R.I.P. prod-01', .5, .62, -.06);
+  put(wAt(36, /KPI/), .5, 'big', '0', .5, .66); put(wAt(36, /KPI/) + .1, 1, 'chip', '📉 KPI  ▼ 100%', .76, .2);
+  put(wAt(39, /badly/), 1.1, 'stamp', 'WONTFIX', .78, .62, .12);
+  return s; }
+E.post.push(() => { const { W, H, u, t } = E; STK = STK || stickers();
+  for (const s of STK) { const age = t - s.t; if (age < 0 || age > s.d) continue; const pop = 1 + .7 * Math.exp(-age * 16), a = 1 - sm(s.d - .1, s.d, age);
+    O.save(); O.translate(s.x * W, s.y * H); O.rotate(s.rot + (s.kind === 'tag' ? Math.sin(age * 20) * .05 * Math.exp(-age * 5) : 0)); O.scale(pop * s.sc, pop * s.sc); O.globalAlpha = a; O.textAlign = 'center'; O.textBaseline = 'middle';
+    if (s.kind === 'emoji') { O.font = `${9 * u}px serif`; O.fillText(s.txt, 0, 0); }
+    else if (s.kind === 'big') { O.font = `${26 * u}px ${IMPACT}`; O.lineJoin = 'round'; O.lineWidth = 2.4 * u; O.strokeStyle = '#000'; O.strokeText(s.txt, 0, 0); O.fillStyle = '#fff'; O.fillText(s.txt, 0, 0); }
+    else { const fs = (s.kind === 'chip' ? 1.7 : 2.3) * u; O.font = `bold ${fs}px ${s.kind === 'neon' ? F.sans : F.mono}`; const tw = O.measureText(s.txt).width + fs * 1.6, th = fs * 2.1;
+      if (s.kind === 'tag') { rr(O, -tw / 2 - fs, -th / 2, tw + fs, th, fs * .3); O.fillStyle = '#ffe14a'; O.fill(); O.fillStyle = '#111'; O.beginPath(); O.arc(-tw / 2 - fs * .3, 0, fs * .25, 0, TAU); O.fill(); O.fillText(s.txt, fs * .1, 0); }
+      else if (s.kind === 'stamp') { O.strokeStyle = O.fillStyle = '#ff3b3b'; O.lineWidth = fs * .16; O.strokeRect(-tw / 2, -th / 2, tw, th); O.lineWidth = fs * .06; O.strokeRect(-tw / 2 - fs * .25, -th / 2 - fs * .25, tw + fs * .5, th + fs * .5); O.fillText(s.txt, 0, 0); }
+      else if (s.kind === 'neon') { O.font = `bold ${3.4 * u}px ${F.sans}`; const on = hash(Math.floor(t * 14)) > .18; O.shadowColor = '#ff4fd8'; O.shadowBlur = on ? 2.5 * u : 0; O.fillStyle = on ? '#ffd6f6' : '#5a2a52'; O.fillText(s.txt, 0, 0); O.shadowBlur = 0; }
+      else { rr(O, -tw / 2, -th / 2, tw, th, th / 2); O.fillStyle = 'rgba(13,17,23,.95)'; O.fill(); O.strokeStyle = COL.mint; O.lineWidth = 1.2; O.stroke(); O.fillStyle = COL.paper; O.fillText(s.txt, 0, 0); } }
+    O.restore(); }
+  O.textAlign = 'left'; O.globalAlpha = 1; });
+
+// ---------- flocks of virtual cursors: when nobody is steering, other pointers dance the piece
+const FLOCK = [[23.2, 38.6, 9, 'ring'], [68.7, 75.6, 12, 'chase'], [122.7, 127.6, 8, 'line'], [139.5, 149, 10, 'ring'], [164.75, 172.5, 14, 'line'], [189, 233, 22, 'mix'], [243.85, 252, 30, 'burst']];
+function arrow(c, x, y, s, rot, a, fill) { c.save(); c.translate(x, y); c.rotate(rot); c.scale(s, s); c.globalAlpha = a; c.beginPath(); c.moveTo(0, 0); c.lineTo(0, 16); c.lineTo(4.2, 12.4); c.lineTo(7, 19); c.lineTo(9.6, 17.9); c.lineTo(6.8, 11.5); c.lineTo(12, 11.5); c.closePath(); c.fillStyle = fill; c.fill(); c.lineWidth = 1.2; c.strokeStyle = '#000'; c.stroke(); c.restore(); }
+const CUR = [];
+E.post.push(() => { const { W, H, u, t, dt } = E; let want = 0, mode = 'ring';
+  for (const [a, b, n, m] of FLOCK) if (t >= a && t < b) { want = Math.round(n * sm(a, a + 1.2, t) * (1 - sm(b - .8, b, t))); mode = m; }
+  if (mode === 'mix') mode = ['ring', 'line', 'chase', 'burst'][(Math.floor(E.beatN / 8) % 4 + 4) % 4];
+  while (CUR.length < want) CUR.push({ x: hash(CUR.length * 3.1) * W, y: H + 20, vx: 0, vy: 0 });
+  const bar = Math.floor(E.beatN / 4), stp = E.beatN + sm(0, .3, E.beat), n = Math.max(1, want);
+  CUR.forEach((c, j) => { let tx, ty; const live = j < want;
+    if (!live) { tx = c.x; ty = H + 40; }
+    else if (mode === 'ring') { const g = j / n * TAU + stp * PI / 8 * (bar % 2 ? 1 : -1), r = (22 + 8 * Math.sin(stp * PI / 2 + j)) * u; tx = W / 2 + Math.cos(g) * r; ty = H / 2 + Math.sin(g) * r * .8; }
+    else if (mode === 'line') { const q = (j + .5) / n; tx = W * (.08 + .84 * q) + ((E.beatN % 2 ? 1 : -1) * 2.5 * u); ty = H * .5 + Math.sin(q * TAU * 1.5 + stp * PI / 2) * H * .22; }
+    else if (mode === 'chase') { const g = stp * .7 + j * .35; tx = W * (.5 + .38 * Math.sin(g * 1.3)); ty = H * (.5 + .34 * Math.sin(g * 1.7 + 1)); }
+    else { const g = j * 2.39996 + bar, r = (10 + 42 * ((stp * .5 + hash(j)) % 1)) * u; tx = W / 2 + Math.cos(g) * r; ty = H / 2 + Math.sin(g) * r * .8; }
+    c.vx += ((tx - c.x) * 26 - c.vx * 7) * dt; c.vy += ((ty - c.y) * 26 - c.vy * 7) * dt; c.x += c.vx * dt; c.y += c.vy * dt;
+    if (!live && c.y > H + 30) return;
+    arrow(O, c.x, c.y, .16 * u, Math.atan2(c.vy, c.vx) * .12, 1, '#fff');
+    I.globalAlpha = .12 + .4 * E.snap; I.fillStyle = PAL[j % 5]; I.beginPath(); I.arc(c.x, c.y, (.6 + 1.6 * E.snap) * u, 0, TAU); I.fill(); I.globalAlpha = 1;
+    if (E.snap > .55 && (j + E.beatN) % 3 === 0) { O.globalAlpha = E.snap; O.strokeStyle = COL.paper; O.lineWidth = .2 * u; O.beginPath(); O.arc(c.x, c.y, (1 - E.snap) * 9 * u + u, 0, TAU); O.stroke(); O.globalAlpha = 1; } });
+  while (CUR.length > want && CUR[CUR.length - 1].y > H + 30) CUR.pop();
+  E.lead = want && CUR[0] ? CUR[0] : null;   // the lead cursor stirs the fluid and the grains when you don't
+});
 
 E.go();
 })();
