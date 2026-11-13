@@ -65,6 +65,8 @@ const vOn = peaks(vFlux, 1.35, .1, .085, 12).map(([t, v]) => [t - LAG, v]);
 const voiced = t => { const f = fr(t + LAG); return f >= 0 && f < vEnv.length ? vEnv[f] : 0; };
 const THR = .1;
 const syl = w => { let n = 0; for (const part of w.toLowerCase().replace(/[^a-z-]/g, '').split('-')) { if (!part) continue; const m = part.replace(/e$/, '').match(/[aeiouy]+/g); n += Math.max(1, m ? m.length : 1); } return Math.max(1, n); };
+// hand-set from the onset list where the lyric text and the delivery differ (spelled-out letters, a spoken aside)
+const OVERRIDE = { 1: [18.9, 19.1, 19.28, 19.55], 50: [235.35, 239.74, 239.91, 240.09, 240.27] };
 const WORDS = [], report = [];
 cues.forEach((c, i) => {
   const ws = c.text.split(' '), nextA = cues[i + 1] ? cues[i + 1].a : c.b, lim = Math.min(c.b, nextA);
@@ -74,6 +76,9 @@ cues.forEach((c, i) => {
   if (i > 0 && a < c.a - .12) { // don't swallow the tail of the previous line: start at the deepest dip before the cue
     let best = c.a, bv = 9; for (let t = c.a - .3; t <= c.a + .1; t += .01) if (voiced(t) < bv) { bv = voiced(t); best = t; } if (bv < THR * 1.5) a = best; }
   if (a < c.a - .12) a = c.a - .12;
+  { // echoes and ad-libs after the phrase must not stretch it: stop at the first long gap once most syllables are accounted for
+    const S0 = ws.map(syl).reduce((x, y) => x + y, 0), o = vOn.filter(([t]) => t >= a - .1 && t <= b + .05).map(([t]) => t);
+    for (let j = Math.max(0, Math.ceil(S0 * .6) - 1); j < o.length - 1; j++) if (o[j + 1] - o[j] > .85) { b = Math.min(b, o[j] + .35); break; } }
   // expected syllable times: spread over sounding audio only (pauses skipped)
   const step = .01, ts = [], cum = []; let acc = 0; for (let t = a; t <= b + 1e-6; t += step) { ts.push(t); acc += voiced(t) > THR ? 1 : .04; cum.push(acc); }
   const sy = ws.map(syl), S = sy.reduce((x, y) => x + y, 0), tot = S, e = []; let k0 = 0;
@@ -89,6 +94,7 @@ cues.forEach((c, i) => {
     for (let k = 0; k < S; ) { let m = k; while (m + 1 < S && as[m + 1] === as[k]) m++; const t0 = on[as[k]], t1 = m + 1 < S ? on[as[m + 1]] : t0 + .16 * (m - k + 1);
       if (Math.abs(t0 - e[k]) < .3) { for (let q = k; q <= m; q++) sylT[q] = t0 + (t1 - t0) * (q - k) / (m - k + 1); snapped += m - k + 1; } k = m + 1; } }
   let last = -1, si = 0; const out = ws.map((w, k) => { const t = Math.max(sylT[si], last + .05); si += sy[k]; last = t; return +t.toFixed(3); });
+  if (OVERRIDE[i]) OVERRIDE[i].forEach((t, k) => { out[k] = t; });
   WORDS.push(out); report.push(`${String(i).padStart(2)} slot ${c.a.toFixed(2)}–${lim.toFixed(2)}  sung ${a.toFixed(2)}–${b.toFixed(2)}  on ${on.length}/syl ${S}  snapped ${snapped}/${S}  ${c.text.slice(0, 30)}`);
 });
 if (flag) { console.log(report.join('\n')); for (const i of [2, 16, 18, 37, 48, 50]) console.log(i, cues[i].text.split(' ').map((w, k) => w.slice(0, 7) + '@' + (WORDS[i][k] - cues[i].a).toFixed(2)).join(' ')); }

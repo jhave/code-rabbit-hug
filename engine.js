@@ -92,7 +92,7 @@ void main(){
 const SHOW = `#version 300 es
 precision highp float;
 uniform sampler2D uTex; uniform vec2 uRes; uniform float uT;
-uniform float uIrid,uFluoro,uBlush,uGlitch,uDim,uPulse,uSnap,uHat,uBright;
+uniform float uIrid,uFluoro,uBlush,uGlitch,uDim,uPulse,uSnap,uHat,uBright,uField,uKAge,uBass,uKeys,uTick;
 in vec2 v; out vec4 o;
 ${NOISE}
 float L(vec3 c){ return dot(c,vec3(.3,.59,.11)); }
@@ -118,6 +118,12 @@ void main(){
   float flick=(1.-.35*step(.93,h1(vec2(floor(uT*24.),7.))))*(.94+.06*sin(uT*377.));
   float tube=smoothstep(.012,.0,abs(v.y-.965))*step(.04,fract(v.x*3.+.02))*1.6;
   vec3 fl=vec3(.72,.95,.88)*(exp(-(1.-v.y)*3.2)*.30+tube)*flick*uFluoro;
+  if(uField>.01){ float cs=.05; vec2 g=p/cs, id=floor(g), f=fract(g)-.5; float r=length((id+.5)*cs);
+    float wave=exp(-abs(r-uKAge*1.5)*7.)*exp(-uKAge*2.2);
+    float rad=.08+.32*wave+.12*uBass+.09*uTick*step(.5,fract((id.x+id.y)*.5));
+    float d=smoothstep(rad,rad-.07,length(f));
+    vec3 dc=.5+.5*cos(6.2832*(r*.6-uT*.05+uKeys*.35+vec3(0.,.33,.67)));
+    bg+=d*dc*(.09+.55*wave+.14*uBass)*uField; }
   c=bg*(1.-uDim)+c+fl;
   c=mix(c, c*vec3(1.35,.42,.55)+vec3(.28,.0,.06)*(.35+l), uBlush);
   float ice=s.a;
@@ -147,7 +153,7 @@ void main(){ o=texture(uTex,v+uOff)*uA; }`;
 // the lens: the finished picture (fluid + grains + type) seen through switchable aesthetic registers
 const LENS = `#version 300 es
 precision highp float;
-uniform sampler2D uC,uAtlas; uniform vec2 uRes; uniform float uT,uDpr,uBass;
+uniform sampler2D uC,uAtlas; uniform vec2 uRes; uniform float uT,uDpr,uBass,uRing,uRingA;
 uniform float mCrt,mAscii,mFry,mTherm,mHalf,mLcd,mKal,mPix,mVap,mInv,mEdge,mXer,mVhs;
 in vec2 v; out vec4 o;
 ${NOISE}
@@ -187,6 +193,7 @@ void main(){
     vec3 x=mix(vec3(.93,.91,.85),vec3(.07,.06,.09),k); if(k>.5&&sat>.42&&c.r>c.g) x=vec3(.86,.12,.18); c=mix(c,x,mXer); }
   if(mVhs>.01){ vec3 q=vec3(S(uv+vec2(.0045,0.)).r,c.g,S(uv-vec2(.0045,0.)).b); float l=L(q); q=mix(vec3(l),q,.75)*.92+.05;
     q+=(h1(v*uRes+fract(uT)*9.)-.5)*.09; q*=.93+.07*sin(v.y*uRes.y/uDpr*1.6); c=mix(c,q,mVhs); }
+  { float rr=length((v-.5)*vec2(asp,1.)); c=mix(c,1.-c,clamp(smoothstep(.06,0.,abs(rr-uRing*1.7))*exp(-uRing*2.6)*uRingA,0.,1.)); }
   c=mix(c,1.-c,mInv);
   o=vec4(c,1.);
 }`;
@@ -313,7 +320,8 @@ void main(){ float m=smoothstep(.5,.12,length(gl_PointCoord-.5)); o=vec4(vc.rgb*
   const rgbOf = c => { const m = /^#([0-9a-f]{6})$/i.exec(c || ''); if (!m) return [243, 239, 230]; const v = parseInt(m[1], 16); return [v >> 16, (v >> 8) & 255, v & 255]; };
   function put(x, y, arr, rel, rgb) { const q = gp * 4; gp = (gp + 1) % NN; tgt[q] = (x - W / 2) / H; tgt[q + 1] = (H / 2 - y) / H; tgt[q + 2] = arr; tgt[q + 3] = rel;
     const j = .78 + .3 * Math.random(); col[q] = Math.min(255, rgb[0] * j); col[q + 1] = Math.min(255, rgb[1] * j); col[q + 2] = Math.min(255, rgb[2] * j); col[q + 3] = Math.random() * 255; dirty = true; }
-  function lit(w, h) { const d = rx.getImageData(0, 0, w, h).data, out = []; for (let i = 3, k = 0; i < d.length; i += 4, k++) if (d[i] > 90) out.push(k); return out; }
+  let litD = null;
+  function lit(w, h) { const d = litD = rx.getImageData(0, 0, w, h).data, out = []; for (let i = 3, k = 0; i < d.length; i += 4, k++) if (d[i] > 90) out.push(k); return out; }
   return {
     ok: true, N,
     once(key, fn) { if (seen.has(key)) return; seen.add(key); fn(); },
@@ -330,7 +338,7 @@ void main(){ float m=smoothstep(.5,.12,length(gl_PointCoord-.5)); o=vec4(vc.rgb*
     shape(draw, n, arr, rel, color) {
       const sc = Math.min(1, 720 / W), w = Math.ceil(W * sc), h = Math.ceil(H * sc); if (w < 4 || h < 4) return; rc.width = w; rc.height = h; rx.setTransform(sc, 0, 0, sc, 0, 0); rx.fillStyle = rx.strokeStyle = '#fff'; draw(rx); rx.setTransform(1, 0, 0, 1, 0, 0);
       const L = lit(w, h); if (!L.length) return; const rgb = rgbOf(color); n = Math.min(n, NN);
-      for (let k = 0; k < n; k++) { const px = L[(Math.random() * L.length) | 0]; put((px % w + Math.random()) / sc, (((px / w) | 0) + Math.random()) / sc, typeof arr === 'function' ? arr(Math.random()) : arr, rel, rgb); }
+      for (let k = 0; k < n; k++) { const px = L[(Math.random() * L.length) | 0]; put((px % w + Math.random()) / sc, (((px / w) | 0) + Math.random()) / sc, typeof arr === 'function' ? arr(Math.random()) : arr, rel, color === null ? [litD[px * 4], litD[px * 4 + 1], litD[px * 4 + 2]] : rgb); }
     },
     releaseAll(at) { for (let q = 3; q < NN * 4; q += 4) if (tgt[q] > at) tgt[q] = at; dirty = true; seen.clear(); },
     step(T, t, dt) {
@@ -359,7 +367,7 @@ void main(){ float m=smoothstep(.5,.12,length(gl_PointCoord-.5)); o=vec4(vc.rgb*
 })();
 
 // ---------- params
-const DEF = { swirl: 0, turb: 1, shear: 0, drain: 0, decay: .972, inject: 1, irid: .35, fluoro: 0, blush: 0, glitch: 0, freeze: 0, grav: 0, zoom: 0, dim: 0, block: 0, thump: .6 };
+const DEF = { swirl: 0, turb: 1, shear: 0, drain: 0, decay: .972, inject: 1, irid: .35, fluoro: 0, blush: 0, glitch: 0, freeze: 0, grav: 0, zoom: 0, dim: 0, block: 0, thump: .6, field: .8, ring: .5 };
 const P = { ...DEF };
 
 // ---------- lyric timing helpers
@@ -417,9 +425,14 @@ addEventListener('pointerup', () => ptr.down = false);
 // ---------- clock
 let started = false, ended = false, clock = 0, slow = 0, lastT = 0, hidden = null;
 const fake = qs.has('fake'), hold = qs.has('hold'), t0 = +qs.get('t') || 0;
+const teaser = new Audio('listen.m4a'); teaser.volume = .6; teaser.preservesPitch = false; let teaseN = 0;
+function tease() { if (started || fake) return; teaser.currentTime = 0; teaser.playbackRate = [1, .8, 1.15, .92][teaseN++ % 4];
+  teaser.play().then(() => { E.teased = performance.now() / 1000; }).catch(() => {}); setTimeout(tease, 3800 + 1700 * (teaseN % 3)); }
+setTimeout(tease, 700);
 function start() {
   if (started && !ended) return;
-  clock = ended ? 0 : t0; started = true; ended = false; G.releaseAll(clock + .25);
+  clock = ended ? 0 : t0; started = true; ended = false; G.releaseAll(clock + .25); teaser.pause();
+  if (!fake && !qs.has('nofs') && document.documentElement.requestFullscreen && !document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {});
   if (!fake) { audio.currentTime = clock; audio.play().catch(() => { started = false; }); }
 }
 audio.addEventListener('ended', () => { ended = true; });
@@ -501,7 +514,7 @@ function frame(ms, manual) {
   gl.useProgram(showP.p); gl.bindFramebuffer(gl.FRAMEBUFFER, compFbo); gl.viewport(0, 0, glc.width, glc.height);
   gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tex[cur]); gl.uniform1i(showP.u.uTex, 0);
   const V = showP.u; gl.uniform2f(V.uRes, glc.width, glc.height); gl.uniform1f(V.uT, T);
-  gl.uniform1f(V.uIrid, P.irid * (.75 + .6 * E.stem.keys)); gl.uniform1f(V.uFluoro, P.fluoro); gl.uniform1f(V.uBlush, P.blush); gl.uniform1f(V.uGlitch, P.glitch); gl.uniform1f(V.uDim, P.dim); gl.uniform1f(V.uPulse, E.pulse); gl.uniform1f(V.uSnap, E.snap * (.35 + .65 * E.A.hi)); gl.uniform1f(V.uHat, E.A.hi); gl.uniform1f(V.uBright, E.A.bright);
+  gl.uniform1f(V.uIrid, P.irid * (.75 + .6 * E.stem.keys)); gl.uniform1f(V.uFluoro, P.fluoro); gl.uniform1f(V.uBlush, P.blush); gl.uniform1f(V.uGlitch, P.glitch); gl.uniform1f(V.uDim, P.dim); gl.uniform1f(V.uPulse, E.pulse); gl.uniform1f(V.uSnap, E.snap * (.35 + .65 * E.A.hi)); gl.uniform1f(V.uHat, E.A.hi); gl.uniform1f(V.uBright, E.A.bright); gl.uniform1f(V.uField, P.field); gl.uniform1f(V.uKAge, playing ? since(KICKS, t) : 9); gl.uniform1f(V.uBass, E.stem.bass); gl.uniform1f(V.uKeys, E.stem.keys); gl.uniform1f(V.uTick, E.hat);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
   if (G.ok) G.draw(compFbo, glc.width, glc.height, 1.55 * dpr, 1);
   gl.useProgram(copyP.p); gl.bindFramebuffer(gl.FRAMEBUFFER, compFbo); gl.viewport(0, 0, glc.width, glc.height);
@@ -512,7 +525,7 @@ function frame(ms, manual) {
   LOOKS.forEach(k => look[k] = 0); if (playing && E.lookFn) E.lookFn(t, look);
   const Q = lensP.u; gl.useProgram(lensP.p); gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, compTex); gl.uniform1i(Q.uC, 0); gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, atlasTex); gl.uniform1i(Q.uAtlas, 1); gl.activeTexture(gl.TEXTURE0);
-  gl.uniform2f(Q.uRes, glc.width, glc.height); gl.uniform1f(Q.uT, T); gl.uniform1f(Q.uDpr, dpr); gl.uniform1f(Q.uBass, E.stem.bass);
+  gl.uniform2f(Q.uRes, glc.width, glc.height); gl.uniform1f(Q.uT, T); gl.uniform1f(Q.uDpr, dpr); gl.uniform1f(Q.uBass, E.stem.bass); gl.uniform1f(Q.uRing, playing ? since(KICKS, t) : 9); gl.uniform1f(Q.uRingA, P.ring);
   gl.uniform1f(Q.mCrt, look.crt); gl.uniform1f(Q.mAscii, look.ascii); gl.uniform1f(Q.mFry, look.fry); gl.uniform1f(Q.mTherm, look.therm); gl.uniform1f(Q.mHalf, look.half);
   gl.uniform1f(Q.mLcd, look.lcd); gl.uniform1f(Q.mKal, look.kal); gl.uniform1f(Q.mPix, look.pix); gl.uniform1f(Q.mVap, look.vap); gl.uniform1f(Q.mInv, look.inv); gl.uniform1f(Q.mEdge, look.edge); gl.uniform1f(Q.mXer, look.xerox); gl.uniform1f(Q.mVhs, look.vhs);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
