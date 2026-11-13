@@ -9,6 +9,7 @@ const PI = Math.PI, G = E.G;
 const rgba = (r, g, b, a) => `rgba(${r | 0},${g | 0},${b | 0},${a})`;
 const COL = { paper: '#f3efe6', mint: '#7dffc8', pink: '#ff7ac8', amber: '#ffc861', blue: '#6fb6ff', red: '#ff5a5f', green: '#3fd47a', violet: '#b79cff', dim: '#8d8fa3' };
 const PAL = [COL.mint, COL.pink, COL.amber, COL.blue, COL.violet];
+const IMPACT = 'Impact,Haettenschweiler,"Arial Narrow Bold","Helvetica Neue",sans-serif';
 
 // ---------- text helpers
 function words(c, i, cx, cy, o = {}) {
@@ -261,7 +262,10 @@ add(68.7, 83.6, t => t < 79.3 ? { turb: .9, grav: .3, irid: .4 } : { grav: 1.3, 
       if (!ink && /Jira|tickets/.test(w.w) && age > .5) { c.strokeStyle = COL.red; c.lineWidth = size * .07; c.beginPath(); c.moveTo(0, 0); c.lineTo(w.wd * clamp((age - .5) / .25), 0); c.stroke(); } } }));
   seq(11, 11, (i, lk) => curlText(i, W / 2, H * .46, Math.min(4.2 * u, E.fw * .036), k * lk));
   seq(12, 12, (i, lk) => {
-    para(i, W / 2, H * .38, { size, fam: F.disp, k: k * lk });
+    { const ws = wordsOf(12), fs = Math.min(8.5 * u, E.fw * .075), rows = [ws.slice(0, 3), ws.slice(3)];
+      rows.forEach((row, r) => { font(O, fs, IMPACT); const full = row.map(w => w.w.toUpperCase()).join(' '), sc = Math.min(1, W * .92 / O.measureText(full).width); font(O, fs * sc, IMPACT); let x = W / 2 - O.measureText(full).width / 2; const y = r ? H * .84 : H * .15;
+        for (const w of row) { const tx = w.w.toUpperCase(), a = clamp((t - w.a) / .06); O.globalAlpha = k * lk * a; O.lineJoin = 'round'; O.lineWidth = fs * sc * .14; O.strokeStyle = '#000'; O.strokeText(tx, x, y); O.fillStyle = '#fff'; O.fillText(tx, x, y);
+          G.once('cap' + w.i, () => G.word(tx, fs * sc, IMPACT, '', x, y, w.a, w.b, nextA(12) + .1, '#ffffff')); x += O.measureText(tx + ' ').width; } }); O.globalAlpha = 1; }
     const c = cues[12], dur = wordsOf(12).end - c.a, ts = wordT(12, /slaughter/), s = 5.5 * u;
     for (let j = 0; j < 10; j++) {
       const a = t - (c.a + j * dur / 12); if (a < 0) continue;
@@ -532,6 +536,9 @@ add(172.9, 189.0, { glitch: .85, turb: .35, irid: .25, decay: .962, dim: .3 }, (
     const L = para(i, W / 2, H * .4, { size: size * 1.15, style: 'italic', k: k * lk, maxW: Math.min(W * .7, E.fw * .62) });
     font(O, size, F.mono); O.fillStyle = '#7fa08a'; O.globalAlpha = k * lk; O.fillText('/*', W / 2 - L.w / 2 - size * 2.2, H * .4 - L.h / 2 + size * .5); if (t > wordsOf(39).end) O.fillText('*/', W / 2 + L.w / 2 + size * .8, H * .4 + L.h / 2 - size * .5); O.globalAlpha = 1;
   });
+  if (t > cues[40].a) { const q = sm(cues[40].a, wordT(40, /un-merged/), t), pc = Math.min(99, Math.floor(q * 99)), bw = Math.min(46 * u, W * .7), bx = W / 2 - bw / 2, by = H * .7, stuck = pc >= 99;
+    O.globalAlpha = k; O.strokeStyle = COL.dim; O.lineWidth = 1.2; rr(O, bx, by, bw, 2.2 * u, 1.1 * u); O.stroke(); O.fillStyle = stuck ? COL.amber : COL.mint; rr(O, bx + .3 * u, by + .3 * u, (bw - .6 * u) * pc / 100 - (stuck ? Math.abs(Math.sin(t * 9)) * u * .5 : 0), 1.6 * u, .8 * u); O.fill();
+    font(O, 1.5 * u, F.mono); O.fillStyle = stuck ? COL.amber : COL.dim; O.fillText(`Merging feature/hug into main… ${pc}%` + (stuck && E.beat < .5 ? ' ▮' : ''), bx, by + 4.4 * u); O.globalAlpha = 1; }
   seq(40, 40, (i, lk) => { glitchText(i, W / 2, H * .34, size, k * lk);
     const a = sm(0, .4, t - wordT(40, /bot/)) * k * lk; if (a > 0) { const y = H * .58, hug = sm(0, 1.2, t - wordT(40, /bug/));
       bunny(O, W / 2 - lerp(8, 2.6, hug) * u, y, 2.4 * u, 0, a); O.font = `${4 * u}px serif`; O.textAlign = 'center'; O.textBaseline = 'middle'; O.globalAlpha = a; O.fillText('🐛', W / 2 + lerp(8, 2.6, hug) * u, y);
@@ -560,22 +567,22 @@ add(233.7, 255.5, t => t < 243.8 ? { turb: .3, irid: .3, decay: .955, dim: .2 } 
     const fl = (Math.sin(T * 15) + 1) * 1.6 * u, bx = W / 2 + 27 * u + Math.sin(T) * 2 * u, by = H * .32 + Math.cos(T * 1.3) * u;
     O.globalAlpha = bq; O.strokeStyle = COL.paper; O.lineWidth = .35 * u; O.lineCap = 'round'; O.beginPath(); O.moveTo(bx - 4 * u, by); O.quadraticCurveTo(bx - 2 * u, by - fl - u, bx, by); O.quadraticCurveTo(bx + 2 * u, by - fl - u, bx + 4 * u, by); O.stroke(); O.globalAlpha = 1;
   }
-  const c50 = cues[50].a;
-  if (t > c50 - .55 && t < c50 + 1) G.once('lgtm', () => { const size = fit('LGTM', E.fw * .46, 22 * u, F.mono, 'bold');
+  const c50 = cues[50].a, tL = window.STEMS ? (window.STEMS.vox.find(o => o[0] > c50 + .3) || [c50 + .55])[0] : c50 + .55, w50 = wordsOf(50);
+  if (t > tL - 1 && t < tL + .5) G.once('lgtm', () => { const size = fit('LGTM', E.fw * .46, 22 * u, F.mono, 'bold');
     G.shape(c => { c.translate(W / 2, H * .5); c.rotate(-.05); font(c, size, F.mono, 'bold'); c.textAlign = 'center'; const tw = c.measureText('LGTM').width; c.fillText('LGTM', 0, 0); c.lineWidth = size * .05; rr(c, -tw / 2 - size * .25, -size * .68, tw + size * .5, size * 1.36, size * .14); c.stroke(); },
-      G.N * G.N, r => c50 + .5 + r * .1, 243.82, COL.green); });
+      G.N * G.N, r => tL - .03 + r * .08, 243.82, COL.green); });
   if (t > 251.6) G.once('last', () => G.shape(c => { c.lineWidth = .5 * u; c.lineCap = 'round'; c.translate(W / 2, H / 2); c.beginPath(); for (let q = 0; q < 4; q++) { const g = q * PI / 4, r = 2 * u; c.moveTo(-Math.cos(g) * r, -Math.sin(g) * r); c.lineTo(Math.cos(g) * r, Math.sin(g) * r); } c.stroke(); }, 50000, r => 252.5 + r * .6, 254.5, COL.paper));
   if (t >= c50 && kk > 0) {
     const noA = sm(0, .15, t - c50) * (1 - sm(1.8, 2.6, t - c50));
     font(O, 5 * u, F.serif, 'italic'); O.textAlign = 'center'; O.fillStyle = COL.paper; O.globalAlpha = kk * noA; O.fillText('No—', W / 2, H * .3); O.textAlign = 'left';
-    const ts = t - c50 - .55;
+    const ts = t - tL;
     if (ts > 0) { const size = fit('LGTM', E.fw * .46, 22 * u, F.mono, 'bold'), sc = (1 + .7 * Math.exp(-ts * 9)) * (1 + (big ? E.pulse * .07 : 0));
       E.both((c, ink) => { c.save(); c.translate(W / 2, H * .5); c.rotate(-.05); c.scale(sc, sc); font(c, size, F.mono, 'bold'); c.textAlign = 'center';
         const tw = c.measureText('LGTM').width; c.globalAlpha = kk * (ink ? .05 + .6 * Math.exp(-ts * 5) + (big ? .1 * E.pulse : 0) : clamp(ts / .08));
         c.fillStyle = COL.green; c.fillText('LGTM', 0, 0); c.strokeStyle = COL.green; c.lineWidth = size * .05; rr(c, -tw / 2 - size * .25, -size * .68, tw + size * .5, size * 1.36, size * .14); c.stroke(); c.restore(); c.globalAlpha = 1; });
       const s2 = 'Looks good to me.'.split(' '); font(O, 3.6 * u, F.serif, 'italic'); const tot = O.measureText(s2.join(' ')).width; let x = W / 2 - tot / 2;
-      s2.forEach((w, j) => { O.globalAlpha = kk * clamp((t - c50 - 1.5 - j * .3) / .2); O.fillStyle = COL.paper; O.fillText(w, x, H * .5 + size * .95); x += O.measureText(w + ' ').width; });
-      font(O, 1.5 * u, F.mono); O.textAlign = 'center'; O.fillStyle = COL.green; O.globalAlpha = kk * sm(4, 5, t - c50) * .85; O.fillText('✓ code-rabbit approved these changes', W / 2, H * .5 + size * .95 + 5 * u); O.textAlign = 'left'; O.globalAlpha = 1; }
+      s2.forEach((w, j) => { O.globalAlpha = kk * clamp((t - w50[Math.min(w50.length - 1, j + 1)].a) / .15); O.fillStyle = COL.paper; O.fillText(w, x, H * .5 + size * .95); x += O.measureText(w + ' ').width; });
+      font(O, 1.5 * u, F.mono); O.textAlign = 'center'; O.fillStyle = COL.green; O.globalAlpha = kk * sm(.5, 1.3, t - w50[w50.length - 1].a) * .85; O.fillText('✓ code-rabbit approved these changes', W / 2, H * .5 + size * .95 + 5 * u); O.textAlign = 'left'; O.globalAlpha = 1; }
     if (t < 251.6) callRabbits(big ? 90 : 16 * sm(1.5, 4, t - c50), big ? ptr.x : W / 2, big ? ptr.y : H * .5, big ? 22 : 34);
   }
   if (big && kk > 0) { spiral(kk, 1.3); beads(kk, .7); stars(kk * .8, 0, false);
@@ -593,6 +600,72 @@ E.post.push(() => { // every "so it goes" leaves an asterisk
 });
 E.post.push(rabbitsStep);
 E.post.push(() => { const { W, H, t } = E; O.fillStyle = 'rgba(243,239,230,.22)'; O.fillRect(0, H - 1.5, W * t / E.S.dur, 1.5); });
+
+// ============================================================ aesthetic registers (the lens in engine.js)
+// The same matter is seen through different pictures of the world: phosphor terminal, ASCII, deep-fried macro,
+// thermal camera, halftone print, handheld LCD, kaleidoscope, bitmap, vaporwave. Lyrics choose the register.
+const c_ = i => cues[i].a, wAt = (i, re, nth = 0) => { const m = wordsOf(i).filter(w => re.test(w.w)); return (m[nth] || m[0] || wordsOf(i)[0]).a; };
+const ORDER = ['crt', 'ascii', 'therm', 'half', 'vap', 'kal', 'lcd', 'fry'];
+let SCHED = null;
+function sched() {
+  const s = [], put = (a, b, k, v = 1, f = .04) => s.push([a, b, k, v, f]);
+  const u1 = wAt(0, /unstuck/, 0), u2 = wAt(0, /unstuck/, 1); // unstuck in time: flash-forwards to registers that have not happened yet
+  ['ascii', 'therm', 'vap'].forEach((k, j) => put(u1 + j * .13, u1 + (j + 1) * .13, k, 1, 0)); ['lcd', 'fry', 'kal'].forEach((k, j) => put(u2 + j * .13, u2 + (j + 1) * .13, k, 1, 0));
+  put(wAt(0, /pull-request/), 18.3, 'crt', .7, .3);
+  put(18.7, 24.2, 'half', 1, .5);                                   // "so it goes": the paperback page
+  put(c_(3), c_(4), 'vap'); put(wAt(4, /hoodie/), c_(5), 'therm'); put(wAt(5, /gig/), c_(6), 'fry');
+  put(wAt(6, /Tralfamadorian/), c_(8), 'kal', 1, 0); put(c_(8), c_(9), 'half'); put(wAt(9, /schism/), wAt(9, /schism/) + .14, 'inv', 1, 0);
+  put(c_(10), c_(12), 'crt', .85); put(c_(12), c_(13), 'fry'); put(wAt(13, /heavy/), c_(14), 'therm', .8, .3);
+  put(c_(14), c_(15), 'kal', 1, 0);
+  for (const b of [16, 41]) {
+    put(c_(b), c_(b + 4), 'crt', .8, .15); put(c_(b + 1), c_(b + 2), 'ascii', .72);
+    put(wAt(b + 2, /forty/), wAt(b + 2, /forty/) + .16, 'inv', 1, 0);
+    [0, 3].forEach(j => put(wordsOf(b + 3)[j].a, wordsOf(b + 3)[j].a + .3, 'half', 1, 0));
+    if (b === 41) put(c_(b + 4), c_(b + 5), 'vap');
+    put(c_(b + 5), c_(b + 6), 'kal', 1, 0); put(c_(b + 6), c_(b + 7), 'half');
+  }
+  put(c_(24), c_(25), 'crt', .6); put(c_(26), c_(28), 'lcd', .82); put(c_(28), c_(30), 'half'); put(c_(30), c_(31), 'vap');
+  put(c_(33), c_(34), 'half', .9); put(c_(35), wAt(35, /catacomb/), 'crt');
+  ['boss', 'clock', 'KPI'].forEach(w => { const a = wAt(36, new RegExp(w)); put(a, a + .28, 'fry', 1, 0); });
+  put(c_(37), wAt(37, /simulation/), 'vap', 1, .15); put(wAt(37, /simulation/), c_(38), 'ascii', .8, .05);
+  put(c_(38), c_(39), 'crt', .9); put(c_(40), c_(41), 'crt', .9); put(wAt(40, /un-merged/), c_(41), 'pix', .25, .1);
+  return s;
+}
+E.lookFn = (t, L) => {
+  SCHED = SCHED || sched();
+  for (const [a, b, k, v, f] of SCHED) { if (t < a - f || t > b + f) continue; L[k] = Math.max(L[k], v * (f ? sm(a - f, a + f, t) * (1 - sm(b - f, b + f, t)) : t >= a && t < b ? 1 : 0)); }
+  for (const i of [23, 48]) { const a = wAt(i, /bit/), e = wordsOf(i).end + .6; if (t >= a && t < e) L.pix = Math.max(L.pix, Math.pow(clamp((t - a) / (e - a)), 1.5) * .9); } // bit by bit
+  const tail = wordsOf(48).end + .6, bn = ((E.beatN % 8) + 8) % 8;
+  if (t > c_(44) && t < tail && E.snap > .5) L[ORDER[(bn * 3 + Math.floor(E.beat * 2)) % 8]] = 1;      // snares knock the picture sideways
+  if (t >= tail && t < 233.6) L[ORDER[t > 228 ? (bn * 2 + Math.floor(E.beat * 2)) % 8 : bn]] = 1;      // hyperspeed: a register per beat, then per half-beat
+  if (t > 243.85 && t < 252.1) { L[ORDER[bn]] = 1; if (E.kick > .8) L.inv = 1; }
+};
+
+// ---------- feed furniture: reactions, toasts, error dialogs
+const REACT = ['♥', '🐇', '✅', '👀', '🚀', '💀', 'LGTM', '+1', '🔥', '🫶', 'nit:', 'ship it'];
+const lower = (L, x) => { let a = 0, b = L.length; while (a < b) { const m = (a + b) >> 1; L[m] < x ? a = m + 1 : b = m; } return a; };
+E.post.push(() => { // every snare is somebody reacting
+  const { W, H, u, t } = E; if (!((t > c_(16) && t < c_(24)) || (t > c_(41) && t < 233) || (t > 243.85 && t < 252))) return;
+  const L = E.SNARES, life = 2.4;
+  for (let j = lower(L, t - life); j < L.length && L[j] <= t; j++) { const age = t - L[j], q = age / life, x = W * (.91 + .04 * Math.sin(j * 1.7 + age * 3)), y = H * (.95 - .62 * q), r = REACT[Math.floor(hash(j * 3.7) * REACT.length)];
+    O.globalAlpha = (1 - q) * sm(0, .06, age); O.textAlign = 'center'; O.textBaseline = 'middle';
+    if (/^[a-zA-Z+]/.test(r)) { font(O, 1.6 * u, F.mono, 'bold'); O.textAlign = 'center'; const tw = O.measureText(r).width + 1.8 * u; rr(O, x - tw / 2, y - 1.5 * u, tw, 3 * u, 1.5 * u); O.fillStyle = '#0d1512'; O.fill(); O.strokeStyle = COL.mint; O.lineWidth = 1; O.stroke(); O.fillStyle = COL.mint; O.fillText(r, x, y); }
+    else { O.font = `${(3 + 1.2 * Math.exp(-age * 6)) * u}px ${F.sans}`; O.fillStyle = '#ff4f8b'; O.fillText(r, x, y); } }
+  O.globalAlpha = 1; O.textAlign = 'left';
+});
+const TOAST = [[c_(10), '📅 Stand-up starts in 0 min'], [c_(17), '🐇 code-rabbit[bot] left 1 comment'], [c_(24), '± 1 file changed  +1 −1'], [c_(31), '🐇 code-rabbit[bot] reacted with ♥'], [c_(35), '● 3 checks failing'], [c_(38), 'Voice 2 is typing…'], [c_(42), '🐇 code-rabbit[bot] left 1 comment'], [c_(50) + 1.2, '✓ All checks have passed']];
+E.post.push(() => { const { W, u, t } = E;
+  for (const [a, msg] of TOAST) { const d = t - a; if (d < 0 || d > 3.2) continue; const q = sm(0, .22, d) * (1 - sm(2.8, 3.2, d)); font(O, 1.5 * u, F.mono); const tw = O.measureText(msg).width + 3 * u, x = W - (tw + 2 * u) * q, y = 6.5 * u;
+    O.globalAlpha = q; rr(O, x, y, tw, 4 * u, .8 * u); O.fillStyle = 'rgba(13,17,23,.94)'; O.fill(); O.strokeStyle = 'rgba(125,255,200,.5)'; O.lineWidth = 1; O.stroke(); O.fillStyle = COL.paper; O.fillText(msg, x + 1.5 * u, y + 2.05 * u); O.globalAlpha = 1; } });
+function dialog(x, y, w, h, u, a) { O.globalAlpha = a; O.fillStyle = '#c3c3c3'; O.fillRect(x, y, w, h); O.fillStyle = '#fff'; O.fillRect(x, y, w, .25 * u); O.fillRect(x, y, .25 * u, h); O.fillStyle = '#404040'; O.fillRect(x, y + h - .25 * u, w, .25 * u); O.fillRect(x + w - .25 * u, y, .25 * u, h);
+  O.fillStyle = '#12227a'; O.fillRect(x + .5 * u, y + .5 * u, w - u, 2.6 * u); font(O, 1.5 * u, F.sans, 'bold'); O.fillStyle = '#fff'; O.fillText('hugs.exe', x + 1.2 * u, y + 1.85 * u); O.textAlign = 'right'; O.fillText('✕', x + w - 1.2 * u, y + 1.85 * u); O.textAlign = 'left';
+  font(O, 1.55 * u, F.sans); O.fillStyle = '#000'; O.fillText('✖  A fatal error has occurred.', x + 1.6 * u, y + 5.6 * u); O.fillText('     Loving it, bit by bit.', x + 1.6 * u, y + 7.9 * u);
+  O.fillStyle = '#c3c3c3'; O.strokeStyle = '#000'; O.lineWidth = 1; O.fillRect(x + w / 2 - 4 * u, y + h - 4 * u, 8 * u, 2.7 * u); O.strokeRect(x + w / 2 - 4 * u, y + h - 4 * u, 8 * u, 2.7 * u); O.fillStyle = '#000'; O.textAlign = 'center'; O.fillText('OK', x + w / 2, y + h - 2.6 * u); O.textAlign = 'left'; O.globalAlpha = 1; }
+E.post.push(() => { const { W, H, u, t } = E; // "loving every fatal error": the cascade
+  for (const i of [23, 48]) { const a = wAt(i, /fatal/), e = i === 48 ? wordsOf(48).end + 2.5 : nextA(i) + .1; if (t < a || t > e) continue;
+    const n = Math.min(i === 48 ? 26 : 12, Math.floor((t - a) / (BEAT / 4)) + 1), w = 30 * u, h = 14.5 * u, fade = 1 - sm(e - .4, e, t);
+    for (let j = 0; j < n; j++) { const g = j * .55 + (i === 48 ? 2 : 0), x = (i === 48 ? W * .5 + Math.cos(g) * (4 + j * 1.6) * u : W * .1 + j * 3.4 * u) - (i === 48 ? w / 2 : 0), y = (i === 48 ? H * .5 + Math.sin(g) * (3 + j * 1.2) * u - h / 2 : H * .14 + j * 2.7 * u);
+      dialog(x, y, w, h, u, fade); } } });
 
 E.go();
 })();

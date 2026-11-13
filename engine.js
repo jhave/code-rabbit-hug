@@ -27,6 +27,10 @@ function env(name, t) {
   return (a[k] * (1 - f) + a[k + 1] * f) / 255;
 }
 const BEAT = 60 / S.bpm;
+const ST = window.STEMS || null, STENV = {};
+if (ST) for (const k in ST.env) STENV[k] = dec(ST.env[k]);
+const stem = (k, t) => { const a = STENV[k]; if (!a) return 0; const i = (t - ST.t0) * ST.fps, j = Math.floor(i); if (j < 0 || j >= a.length - 1) return 0; const f = i - j; return (a[j] * (1 - f) + a[j + 1] * f) / 255; };
+const hitT = l => l.map(h => h[0]), KICKS = ST ? hitT(ST.kicks) : S.kicks, SNARES = ST ? hitT(ST.snares) : S.snaps, HATS = ST ? hitT(ST.hats) : S.snaps;
 // seconds since the most recent event in a sorted list (kicks, snaps)
 function since(list, t) { let a = 0, b = list.length - 1, k = -1; while (a <= b) { const m = (a + b) >> 1; if (list[m] <= t) { k = m; a = m + 1; } else b = m - 1; } return k < 0 ? 9 : t - list[k]; }
 
@@ -133,6 +137,57 @@ function prog(fs, vs = VS) { const p = gl.createProgram(); gl.attachShader(p, sh
   for (let i = 0; i < n; i++) { const nm = gl.getActiveUniform(p, i).name; u[nm] = gl.getUniformLocation(p, nm); }
   return { p, u }; }
 const simP = prog(SIM), showP = prog(SHOW);
+const COPY = `#version 300 es
+precision highp float; uniform sampler2D uTex; uniform vec2 uOff; uniform float uA; in vec2 v; out vec4 o;
+void main(){ o=texture(uTex,v+uOff)*uA; }`;
+// the lens: the finished picture (fluid + grains + type) seen through switchable aesthetic registers
+const LENS = `#version 300 es
+precision highp float;
+uniform sampler2D uC,uAtlas; uniform vec2 uRes; uniform float uT,uDpr,uBass;
+uniform float mCrt,mAscii,mFry,mTherm,mHalf,mLcd,mKal,mPix,mVap,mInv;
+in vec2 v; out vec4 o;
+${NOISE}
+float L(vec3 c){ return dot(c,vec3(.3,.59,.11)); }
+vec3 S(vec2 uv){ return texture(uC,clamp(uv,0.,1.)).rgb; }
+void main(){
+  float asp=uRes.x/uRes.y; vec2 p=(v-.5)*vec2(asp,1.);
+  p*=1.-uBass*.014;
+  if(mKal>.5){ float a=atan(p.y,p.x), r=length(p), seg=6.2832/6.; a=mod(a+uT*.05,seg); a=abs(a-seg*.5); p=r*vec2(cos(a),sin(a)); }
+  if(mCrt>.01) p*=1.+mCrt*.09*dot(p,p);
+  vec2 uv=p/vec2(asp,1.)+.5;
+  if(mPix>.01){ float n=mix(uRes.y/uDpr,40.,pow(mPix,.3)); vec2 g=vec2(n*asp,n); uv=(floor(uv*g)+.5)/g; }
+  vec3 c=S(uv);
+  if(mAscii>.01){ vec2 cs=vec2(9.,16.)*uDpr, fc=uv*uRes, cell=floor(fc/cs); vec3 cc=S((cell+.5)*cs/uRes); float l=clamp(L(cc)*1.6,0.,.999);
+    vec2 f=fract(fc/cs); float a=texture(uAtlas,vec2((floor(l*16.)+f.x)/16.,f.y)).r;
+    c=mix(c, a*mix(normalize(cc+.03)*1.7,vec3(.45,1.,.7),.3)*(.4+l), mAscii); }
+  if(mLcd>.01){ vec2 g=uRes/(4.*uDpr); float l=L(S((floor(uv*g)+.5)/g)); float sh=floor(clamp(l*1.7,0.,.999)*4.)/3.;
+    vec2 f=fract(uv*g); c=mix(c, mix(vec3(.05,.09,.04),vec3(.78,.9,.6),sh)*(.72+.28*step(.14,f.x)*step(.14,f.y)), mLcd); }
+  if(mHalf>.01){ float an=.6; mat2 R=mat2(cos(an),-sin(an),sin(an),cos(an)); float n=uRes.y/(7.*uDpr); vec2 q=R*p*n;
+    vec3 cc=S((transpose(R)*(floor(q)+.5)/n)/vec2(asp,1.)+.5); float d=length(fract(q)-.5);
+    float dt=smoothstep(.06,-.06,d-sqrt(clamp(L(cc)*1.3,0.,1.))*.66); c=mix(c, dt*mix(vec3(.97,.93,.84),cc*1.5,.35), mHalf); }
+  if(mTherm>.01){ float l=clamp(L(c)*1.35,0.,1.);
+    vec3 t=l<.25?mix(vec3(0.,0.,.12),vec3(.36,0.,.6),l*4.):l<.5?mix(vec3(.36,0.,.6),vec3(.95,.15,.2),(l-.25)*4.):l<.75?mix(vec3(.95,.15,.2),vec3(1.,.75,.1),(l-.5)*4.):mix(vec3(1.,.75,.1),vec3(1.),(l-.75)*4.);
+    c=mix(c,t,mTherm); }
+  if(mVap>.01){ float l=L(c); vec3 t=mix(vec3(.1,.02,.28),mix(vec3(1.,.3,.75),vec3(.3,1.,.95),smoothstep(.2,.8,l)),smoothstep(0.,.45,l));
+    t=floor(t*6.+.5)/6.; t*=.9+.1*step(.5,fract(v.y*uRes.y/(3.*uDpr))); c=mix(c,t,mVap); }
+  if(mFry>.01){ vec2 e=2./uRes; vec3 b=(S(uv+vec2(e.x,0.))+S(uv-vec2(e.x,0.))+S(uv+vec2(0.,e.y))+S(uv-vec2(0.,e.y)))*.25;
+    vec3 f=c+(c-b)*4.; float l=L(f); f=mix(vec3(l),f,3.2); f=(f-.33)*1.9+.45; f*=vec3(1.25,.95,.55); f+=vec3(.28,.06,0.)*smoothstep(.55,1.,l);
+    f+=(h1(floor(v*uRes/(8.*uDpr))+floor(uT*12.))-.5)*.14; f=floor(f*7.+.5)/7.; c=mix(c,clamp(f,0.,1.),mFry); }
+  if(mCrt>.01){ float sl=.78+.22*sin(v.y*uRes.y/uDpr*3.14159); float m=mod(floor(gl_FragCoord.x/uDpr),3.);
+    vec3 g=c*sl*vec3(m==0.?1.15:.9,m==1.?1.15:.9,m==2.?1.15:.9); g=mix(g,vec3(L(g))*vec3(.35,1.,.55)*1.3,.5);
+    g*=(1.-.45*dot(p,p))*(.94+.06*sin(uT*110.)); g*=1.-step(1.,max(abs(uv.x-.5),abs(uv.y-.5))*2.); c=mix(c,g,mCrt); }
+  c=mix(c,1.-c,mInv);
+  o=vec4(c,1.);
+}`;
+const copyP = prog(COPY), lensP = prog(LENS);
+const LOOKS = ['crt', 'ascii', 'fry', 'therm', 'half', 'lcd', 'kal', 'pix', 'vap', 'inv'], look = {}; LOOKS.forEach(k => look[k] = 0);
+let compTex = null, compFbo = null, ovTex = null, atlasTex = null;
+{ // glyph ramp for the ASCII look, light to dense
+  const ac = document.createElement('canvas'); ac.width = 16 * 18; ac.height = 32; const ax = ac.getContext('2d'); ax.fillStyle = '#fff'; ax.font = 'bold 26px Menlo,Consolas,monospace'; ax.textAlign = 'center'; ax.textBaseline = 'middle';
+  [...' .·:;~=+/}{*x#%@'].forEach((ch, i) => ax.fillText(ch, i * 18 + 9, 17));
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true); atlasTex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, atlasTex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, ac);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE); }
+
 const vb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, vb);
 gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
 gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
@@ -156,6 +211,9 @@ function resize() {
   fbo = tex.map(t => { const f = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, f);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); return f; });
   inkTex = mkTex(sw, sh_, false);
+  if (compTex) { gl.deleteTexture(compTex); gl.deleteFramebuffer(compFbo); gl.deleteTexture(ovTex); }
+  compTex = mkTex(ovc.width, ovc.height, false); ovTex = mkTex(ovc.width, ovc.height, false);
+  compFbo = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, compFbo); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, compTex, 0); gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   E.W = W; E.H = H; E.u = Math.min(W, H) / 100; E.fw = Math.min(W, H * 1.75);
   if (E.onresize) E.onresize();
 }
@@ -363,7 +421,8 @@ addEventListener('keydown', e => {
 // ---------- engine object
 const E = window.E = {
   S, cues, O, I, P, DEF, F, ptr, t: 0, dt: .016, T: 0, W: 0, H: 0, u: 1, fw: 1, started: false, ended: false,
-  A: { lo: 0, mid: 0, hi: 0, rms: 0, flux: 0, bright: 0 }, beat: 0, beatN: 0, pulse: 0, kick: 0, snap: 0, hush: 0, surge: 0, BEAT,
+  A: { lo: 0, mid: 0, hi: 0, rms: 0, flux: 0, bright: 0 }, beat: 0, beatN: 0, pulse: 0, kick: 0, snap: 0, hat: 0, hush: 0, surge: 0, BEAT, KICKS, SNARES, HATS, since, look, LOOKS, lookFn: null,
+  stem: { vox: 0, bv: 0, drums: 0, bass: 0, keys: 0, synth: 0 },
   clamp, lerp, sm, hash, TAU, env, wordsOf, wordT, cprog, charsShown, cueAt, flow, font,
   scenes: [], post: [], gate: null, onresize: null, G,
   both(fn) { fn(O, false); fn(I, true); },
@@ -381,7 +440,8 @@ function frame(ms, manual) {
   for (const k in E.A) E.A[k] = playing ? env(k, t) : 0;
   const bp = (t - S.beat0) / BEAT; E.beatN = Math.floor(bp); E.beat = bp - E.beatN;
   // real drum hits (not just the grid): kick drives the pulse, snaps flash, hats grain; hush/surge follow the dynamics
-  E.kick = playing ? Math.exp(-since(S.kicks, t) * 7) : 0; E.snap = playing ? Math.exp(-since(S.snaps, t) * 11) : 0;
+  E.kick = playing ? Math.exp(-since(KICKS, t) * 7) : 0; E.snap = playing ? Math.exp(-since(SNARES, t) * 11) : 0; E.hat = playing ? Math.exp(-since(HATS, t) * 16) : 0;
+  for (const k in E.stem) E.stem[k] = playing ? stem(k, t) : 0;
   E.pulse = playing ? Math.max(E.kick * (.4 + .6 * E.A.lo), Math.exp(-E.beat * 4.5) * .3 * E.A.lo) : 0;
   slow += (E.A.rms - slow) * (1 - Math.exp(-dt * .9)); E.hush = playing ? clamp(1 - slow * 2.6) : 0;
   E.surge = Math.max(E.surge * Math.exp(-dt * 2.2), playing ? clamp((E.A.rms - slow - .22) * 3) : 0);
@@ -417,7 +477,7 @@ function frame(ms, manual) {
   gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tex[cur]); gl.uniform1i(simP.u.uPrev, 0);
   gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, inkTex); gl.uniform1i(simP.u.uInk, 1);
   gl.uniform2f(simP.u.uRes, sw, sh_); gl.uniform1f(simP.u.uT, T); gl.uniform1f(simP.u.uK, K);
-  const U = simP.u; gl.uniform1f(U.uSwirl, P.swirl); gl.uniform1f(U.uTurb, P.turb * (1 + E.A.mid * .8) * (1 - .5 * E.hush)); gl.uniform1f(U.uFine, (.3 + 2.2 * E.A.hi + 1.5 * E.snap) * (1 - .6 * P.freeze)); gl.uniform1f(U.uShear, P.shear);
+  const U = simP.u; gl.uniform1f(U.uSwirl, P.swirl); gl.uniform1f(U.uTurb, P.turb * (1 + E.A.mid * .8) * (1 - .5 * E.hush)); gl.uniform1f(U.uFine, (.3 + 1.4 * E.hat + 2.5 * E.stem.synth + 1.2 * E.snap) * (1 - .6 * P.freeze)); gl.uniform1f(U.uShear, P.shear);
   gl.uniform1f(U.uDrain, P.drain); gl.uniform1f(U.uDecay, Math.pow(P.decay, K)); gl.uniform1f(U.uInject, P.inject);
   gl.uniform1f(U.uFreeze, P.freeze); gl.uniform1f(U.uGrav, P.grav); gl.uniform1f(U.uGlitch, P.glitch); gl.uniform1f(U.uZoom, P.zoom + E.pulse * .25 * (P.zoom > .05 ? 1 : 0) + E.surge * .7);
   gl.uniform2f(U.uPtr, ptr.x / W, 1 - ptr.y / H);
@@ -425,12 +485,24 @@ function frame(ms, manual) {
   gl.drawArrays(gl.TRIANGLES, 0, 3); cur = nx;
   if (G.ok) { if (t < lastT - .5) G.rewind(); lastT = t; G.step(T, t, dt); G.draw(fbo[cur], sw, sh_, 1.6, .045); }
   // show
-  gl.useProgram(showP.p); gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, glc.width, glc.height);
+  gl.useProgram(showP.p); gl.bindFramebuffer(gl.FRAMEBUFFER, compFbo); gl.viewport(0, 0, glc.width, glc.height);
   gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tex[cur]); gl.uniform1i(showP.u.uTex, 0);
   const V = showP.u; gl.uniform2f(V.uRes, glc.width, glc.height); gl.uniform1f(V.uT, T);
-  gl.uniform1f(V.uIrid, P.irid); gl.uniform1f(V.uFluoro, P.fluoro); gl.uniform1f(V.uBlush, P.blush); gl.uniform1f(V.uGlitch, P.glitch); gl.uniform1f(V.uDim, P.dim); gl.uniform1f(V.uPulse, E.pulse); gl.uniform1f(V.uSnap, E.snap * (.35 + .65 * E.A.hi)); gl.uniform1f(V.uHat, E.A.hi); gl.uniform1f(V.uBright, E.A.bright);
+  gl.uniform1f(V.uIrid, P.irid * (.75 + .6 * E.stem.keys)); gl.uniform1f(V.uFluoro, P.fluoro); gl.uniform1f(V.uBlush, P.blush); gl.uniform1f(V.uGlitch, P.glitch); gl.uniform1f(V.uDim, P.dim); gl.uniform1f(V.uPulse, E.pulse); gl.uniform1f(V.uSnap, E.snap * (.35 + .65 * E.A.hi)); gl.uniform1f(V.uHat, E.A.hi); gl.uniform1f(V.uBright, E.A.bright);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
-  if (G.ok) G.draw(null, glc.width, glc.height, 1.55 * dpr, 1);
+  if (G.ok) G.draw(compFbo, glc.width, glc.height, 1.55 * dpr, 1);
+  gl.useProgram(copyP.p); gl.bindFramebuffer(gl.FRAMEBUFFER, compFbo); gl.viewport(0, 0, glc.width, glc.height);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, ovTex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, ovc); gl.uniform1i(copyP.u.uTex, 0);
+  gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+  const bv = E.stem.bv; if (bv > .08) { gl.uniform2f(copyP.u.uOff, -.007 * bv, .005 * bv); gl.uniform1f(copyP.u.uA, .5 * bv); gl.drawArrays(gl.TRIANGLES, 0, 3); gl.uniform2f(copyP.u.uOff, .012 * bv, -.008 * bv); gl.uniform1f(copyP.u.uA, .28 * bv); gl.drawArrays(gl.TRIANGLES, 0, 3); }
+  gl.uniform2f(copyP.u.uOff, 0, 0); gl.uniform1f(copyP.u.uA, 1); gl.drawArrays(gl.TRIANGLES, 0, 3); gl.disable(gl.BLEND);
+  LOOKS.forEach(k => look[k] = 0); if (playing && E.lookFn) E.lookFn(t, look);
+  const Q = lensP.u; gl.useProgram(lensP.p); gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, compTex); gl.uniform1i(Q.uC, 0); gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, atlasTex); gl.uniform1i(Q.uAtlas, 1); gl.activeTexture(gl.TEXTURE0);
+  gl.uniform2f(Q.uRes, glc.width, glc.height); gl.uniform1f(Q.uT, T); gl.uniform1f(Q.uDpr, dpr); gl.uniform1f(Q.uBass, E.stem.bass);
+  gl.uniform1f(Q.mCrt, look.crt); gl.uniform1f(Q.mAscii, look.ascii); gl.uniform1f(Q.mFry, look.fry); gl.uniform1f(Q.mTherm, look.therm); gl.uniform1f(Q.mHalf, look.half);
+  gl.uniform1f(Q.mLcd, look.lcd); gl.uniform1f(Q.mKal, look.kal); gl.uniform1f(Q.mPix, look.pix); gl.uniform1f(Q.mVap, look.vap); gl.uniform1f(Q.mInv, look.inv);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
 }
 // ?debug shows time / cue number.  ?tap is a timing tool: play, press J (or any letter) on every sung word,
 // press S to save words.js next to index.html; those timings then replace the estimates.
